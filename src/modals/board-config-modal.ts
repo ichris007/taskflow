@@ -1,7 +1,7 @@
 import { App, Notice } from 'obsidian';
 import type TaskViewsPlugin from '../main';
-import type { TabConfig, TabGroup } from '../types';
-import { getTabGroup } from '../types';
+import type { TabConfig, TabGroup, TabGroupConfig } from '../types';
+import { getFrontmatterValue, getTabGroup, normalizeFrontmatterValues } from '../types';
 import { TAB_GROUPS } from '../settings';
 import { TFEditModal } from './tf-edit-modal';
 import { ConfirmModal } from './confirm-modal';
@@ -297,16 +297,18 @@ export class TabEditModal extends TFEditModal {
  * 分组编辑弹窗
  */
 export class GroupEditModal extends TFEditModal {
-	private group: { id: string; label: string; icon: string };
-	private onSave: (group: { id: string; label: string; icon: string }) => void;
+	private group: TabGroupConfig;
+	private onSave: (group: TabGroupConfig) => void;
+	private valuesHost: HTMLElement | null = null;
+	private valuesRefreshTimer: number | null = null;
 
 	constructor(
 		app: App,
-		group: { id: string; label: string; icon: string },
-		onSave: (group: { id: string; label: string; icon: string }) => void,
+		group: TabGroupConfig,
+		onSave: (group: TabGroupConfig) => void,
 	) {
 		super(app);
-		this.group = { ...group };
+		this.group = { ...group, frontmatterValues: group.frontmatterValues ? [...group.frontmatterValues] : undefined };
 		this.onSave = onSave;
 		this.forceSave = !group.id;
 	}
@@ -357,6 +359,98 @@ export class GroupEditModal extends TFEditModal {
 				this.markDirty();
 			},
 		});
+
+		this.addField({
+			key: 'frontmatterProperty',
+			label: t('modal.groupNoteProperty'),
+			description: t('modal.groupNotePropertyDesc'),
+			type: 'text',
+			placeholder: t('modal.groupNotePropertyExample'),
+			value: this.group.frontmatterProperty ?? '',
+			onChange: (v) => {
+				const property = (v as string).trim();
+				if (property !== (this.group.frontmatterProperty ?? '')) {
+					this.group.frontmatterValues = undefined;
+				}
+				this.group.frontmatterProperty = property || undefined;
+				this.markDirty();
+				this.scheduleValuesRefresh();
+			},
+		});
+
+		this.valuesHost = this.formEl?.createDiv({ cls: 'tf-field' }) ?? null;
+		this.renderValuesPicker();
+	}
+
+	onClose(): void {
+		if (this.valuesRefreshTimer !== null) window.clearTimeout(this.valuesRefreshTimer);
+		super.onClose();
+	}
+
+	private scheduleValuesRefresh(): void {
+		if (this.valuesRefreshTimer !== null) window.clearTimeout(this.valuesRefreshTimer);
+		this.valuesRefreshTimer = window.setTimeout(() => {
+			this.valuesRefreshTimer = null;
+			this.renderValuesPicker();
+		}, 300);
+	}
+
+	private collectPropertyValues(property: string): string[] {
+		const values = new Set<string>();
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			const raw = getFrontmatterValue(this.app.metadataCache.getFileCache(file)?.frontmatter, property);
+			for (const value of normalizeFrontmatterValues(raw)) values.add(value);
+		}
+		return [...values].sort((a, b) => a.localeCompare(b));
+	}
+
+	private renderValuesPicker(): void {
+		const host = this.valuesHost;
+		if (!host) return;
+		host.empty();
+		const property = this.group.frontmatterProperty?.trim();
+		if (!property) {
+			host.hide();
+			return;
+		}
+		host.show();
+
+		const labelText = host.createEl('label', { cls: 'tf-field-label' }).createDiv({ cls: 'tf-field-label-text' });
+		labelText.createSpan({ cls: 'tf-field-name', text: t('modal.groupNoteValues') });
+		labelText.createSpan({ cls: 'tf-field-desc', text: t('modal.groupNoteValuesDesc') });
+
+		const selected = new Set(this.group.frontmatterValues ?? []);
+		// Keep previously saved values visible even if no note currently uses them
+		const options = [...new Set([...this.collectPropertyValues(property), ...selected])]
+			.sort((a, b) => a.localeCompare(b));
+
+		const dropdown = host.createDiv({ cls: 'tf-field-input-wrapper' }).createEl('details', { cls: 'tf-multiselect' });
+		const summary = dropdown.createEl('summary', { cls: 'tf-field-select tf-multiselect-summary' });
+		const updateSummary = () => {
+			summary.textContent = selected.size
+				? [...selected].join(', ')
+				: t('modal.groupNoteValuesAny');
+		};
+		updateSummary();
+
+		const list = dropdown.createDiv({ cls: 'tf-multiselect-list' });
+		if (options.length === 0) {
+			list.createDiv({ cls: 'tf-multiselect-empty', text: t('modal.groupNoteValuesNone') });
+			return;
+		}
+		for (const value of options) {
+			const row = list.createEl('label', { cls: 'tf-multiselect-option' });
+			const checkbox = row.createEl('input', { attr: { type: 'checkbox' } });
+			checkbox.checked = selected.has(value);
+			row.createSpan({ text: value });
+			checkbox.addEventListener('change', () => {
+				if (checkbox.checked) selected.add(value);
+				else selected.delete(value);
+				this.group.frontmatterValues = selected.size ? [...selected] : undefined;
+				updateSummary();
+				this.markDirty();
+			});
+		}
 	}
 
 	protected doSave(): void {

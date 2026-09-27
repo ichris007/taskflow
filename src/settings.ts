@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, TFile, setIcon } from 'obsidian';
 import type TaskViewsPlugin from './main';
-import type { Board, OpenLocation, TabConfig, TabGroup, TaskViewsSettings } from './types';
+import type { Board, OpenLocation, TabConfig, TabGroup, TabGroupConfig, TaskViewsSettings } from './types';
 import {
 	clampCoverPosition,
 	COVER_DIR,
@@ -1380,7 +1380,7 @@ export class SettingsManager {
 	}
 
 	/** 打开编辑分组的模态框 */
-	private openGroupEditModal(group: { id: string; label: string; icon: string }): void {
+	private openGroupEditModal(group: TabGroupConfig): void {
 		const modal = new GroupEditModal(this.plugin.app, group, (updatedGroup) => {
 			const index = this.plugin.settings.data.groups.findIndex((g) => g.id === group.id);
 			if (index === -1) return;

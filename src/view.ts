@@ -5,6 +5,8 @@ import {
 	clampCoverPosition,
 	DEFAULT_IMPORTANT_QUERY,
 	getTabGroup,
+	getFrontmatterValue,
+	matchesFrontmatterFilter,
 	resolveSlogan,
 	DEFAULT_WORKBENCH_TITLE,
 } from './types';
@@ -188,6 +190,8 @@ export class TaskFlowView extends ItemView {
 	private activeGroup: TabGroup = 'gtd';
 	private activeTab: TabId = 'gtd-inbox';
 	private activeTabByGroup: Record<string, TabId> = {};
+	private selectedGroupNotePaths: Record<string, string> = {};
+	private groupNoteSelectorEl: HTMLElement | null = null;
 	private cacheManager: ScanCache;
 
 	// Group tab elements
@@ -293,6 +297,84 @@ export class TaskFlowView extends ItemView {
 		return [...this.getTabs()]
 			.filter((t) => getTabGroup(t, groups) === group)
 			.sort((a, b) => a.order - b.order);
+	}
+
+	private getGroupNoteFiles(group: TabGroup): TFile[] {
+		const config = this.getGroups().find((item) => item.id === group);
+		const property = config?.frontmatterProperty?.trim();
+		if (!property) return [];
+		return this.app.vault.getMarkdownFiles()
+			.filter((file) => matchesFrontmatterFilter(
+				getFrontmatterValue(this.app.metadataCache.getFileCache(file)?.frontmatter, property),
+				config?.frontmatterValues,
+			))
+			.sort((left, right) => left.path.localeCompare(right.path));
+	}
+
+	private getSelectedGroupNote(group: TabGroup): TFile | undefined {
+		const selectedPath = this.selectedGroupNotePaths[group];
+		return this.getGroupNoteFiles(group).find((file) => file.path === selectedPath);
+	}
+
+	private renderGroupNoteSelector(): void {
+		const host = this.groupNoteSelectorEl;
+		if (!host) return;
+		host.empty();
+		const group = this.getGroups().find((item) => item.id === this.activeGroup);
+		if (!group) return;
+		if (group.frontmatterProperty?.trim()) this.renderGroupNoteSelect(host, group);
+		this.renderGroupLimitInput(host, group);
+	}
+
+	private renderGroupLimitInput(host: HTMLElement, group: TabGroupConfig): void {
+		const input = host.createEl('input', {
+			cls: 'tasks-view-group-limit-input',
+			attr: {
+				type: 'number',
+				min: '1',
+				step: '1',
+				placeholder: t('view.group.limit'),
+				title: t('view.group.limitDesc'),
+				'aria-label': t('view.group.limitDesc'),
+			},
+		});
+		input.value = group.taskLimit ? String(group.taskLimit) : '';
+		input.addEventListener('change', () => {
+			const parsed = parseInt(input.value, 10);
+			const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+			input.value = limit ? String(limit) : '';
+			if (limit === group.taskLimit) return;
+			group.taskLimit = limit;
+			void this.plugin.saveHeadSettings();
+			void this.renderActiveTabGuarded();
+		});
+	}
+
+	private renderGroupNoteSelect(host: HTMLElement, group: TabGroupConfig): void {
+		const files = this.getGroupNoteFiles(this.activeGroup);
+		let selectedPath = this.selectedGroupNotePaths[this.activeGroup];
+		if (!files.some((file) => file.path === selectedPath)) {
+			selectedPath = files[0]?.path ?? '';
+			this.selectedGroupNotePaths[this.activeGroup] = selectedPath;
+		}
+
+		const select = host.createEl('select', {
+			cls: 'tasks-view-group-note-select',
+			attr: { 'aria-label': t('view.group.selectNote', { group: group.label }) },
+		});
+		if (files.length === 0) {
+			select.createEl('option', { text: t('view.group.noMatchingNotes') });
+			select.disabled = true;
+			return;
+		}
+		for (const file of files) {
+			select.createEl('option', { text: file.path.replace(/\.md$/i, ''), value: file.path });
+		}
+		select.value = selectedPath;
+		select.addEventListener('change', () => {
+			this.selectedGroupNotePaths[this.activeGroup] = select.value;
+			void this.renderActiveTabGuarded();
+		});
 	}
 
 	/**
@@ -666,6 +748,8 @@ export class TaskFlowView extends ItemView {
 			btn.addEventListener('click', () => this.switchGroup(g.id));
 			this.groupBtns[g.id] = btn;
 		}
+		this.groupNoteSelectorEl = bar.createDiv({ cls: 'tasks-view-group-note-selector' });
+		this.renderGroupNoteSelector();
 	}
 
 	/**
@@ -682,6 +766,7 @@ export class TaskFlowView extends ItemView {
 		}
 
 		this.applyTabVisibility();
+		this.renderGroupNoteSelector();
 
 		// 新分组的激活 tab 内容尚未渲染过，必须渲染一次，否则面板是空的
 		// （renderQueries 现在只渲染激活 tab，所以是懒渲染的关键入口）
@@ -1029,6 +1114,7 @@ export class TaskFlowView extends ItemView {
 
 	private async renderQueries() {
 		const epoch = ++this.renderEpoch;
+		this.renderGroupNoteSelector();
 
 		// 只渲染「当前激活的 tab」：非激活 tab 的面板被 display:none 隐藏，
 		// 用户切到时才按需渲染（见 switchTab / switchGroup）。大 vault 上每个 tab 的
@@ -1037,6 +1123,9 @@ export class TaskFlowView extends ItemView {
 		if (!tab) return;
 		const body = this.tabBodies[tab.id];
 		if (!body) return;
+		const groupConfig = this.getGroups().find((item) => item.id === this.activeGroup);
+		const hasNoteSelector = Boolean(groupConfig?.frontmatterProperty?.trim());
+		const selectedNote = hasNoteSelector ? this.getSelectedGroupNote(this.activeGroup) : undefined;
 
 		// 确保 observer 在位（buildTabSection 已挂，这里幂等兜底）
 		this.observeBody(body, tab);
@@ -1054,16 +1143,21 @@ export class TaskFlowView extends ItemView {
 			const key = 'tab:' + tab.id;
 			const comp = this.freshRenderComponent(key);
 			this.pruneRenderComponents(new Set([key, 'important']));
+			if (hasNoteSelector && !selectedNote) {
+				this.renderEmptyState(body, tab);
+				return;
+			}
 
-			// 查询文本**原样**交给 Tasks，一个字都不改：树状与否完全由 query 自己
-			// 决定（写了 `show tree` 才树状，没写就是 Tasks 的默认——扁平）。
-			// 这是 Tasks 原生语义，也避免我们注入的指令和它的行为打架。
+			// 查询文本原样交给 Tasks（树状与否完全由 query 自己决定）。
+			// Only exception: the group limit is appended last so it overrides any limit in the query.
+			const groupLimit = groupConfig?.taskLimit;
+			const query = groupLimit ? `${tab.query}\nlimit ${groupLimit}` : tab.query;
 			const t0 = performance.now();
 			await MarkdownRenderer.render(
 				this.app,
-				'```tasks\n' + tab.query + '\n```',
+				'```tasks\n' + query + '\n```',
 				body,
-				'',
+				selectedNote?.path ?? '',
 				comp,
 			);
 			const ms = performance.now() - t0;
@@ -1435,6 +1529,19 @@ export class TaskFlowView extends ItemView {
 					this.cacheManager.migrateCacheKey(oldPath, file.path);
 				}
 			})
+		);
+
+		// Frontmatter edits change which notes the group note selector offers
+		this.registerEvent(
+			this.app.metadataCache.on('changed', () => {
+				const group = this.getGroups().find((item) => item.id === this.activeGroup);
+				if (!group?.frontmatterProperty?.trim()) return;
+				const before = this.selectedGroupNotePaths[this.activeGroup];
+				this.renderGroupNoteSelector();
+				if (this.selectedGroupNotePaths[this.activeGroup] !== before) {
+					void this.renderActiveTabGuarded();
+				}
+			}),
 		);
 	}
 

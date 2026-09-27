@@ -483,6 +483,76 @@
   border-radius: var(--tf-r-pill);
 }
 
+.tasks-view-group-note-selector {
+  display: flex;
+  gap: var(--tf-s-2);
+  padding-top: var(--tf-s-2);
+}
+
+.tasks-view-group-note-select {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  color: var(--tf-text);
+  background: var(--tf-surface);
+  border: 1px solid var(--tf-hairline-soft);
+  border-radius: 6px;
+}
+
+.tasks-view-group-limit-input {
+  flex: 0 0 80px;
+  width: 80px;
+  padding: 7px 10px;
+  color: var(--tf-text);
+  background: var(--tf-surface);
+  border: 1px solid var(--tf-hairline-soft);
+  border-radius: 6px;
+}
+
+.tf-multiselect {
+  position: relative;
+  width: 100%;
+}
+
+.tf-multiselect-summary {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  list-style: none;
+}
+
+.tf-multiselect-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tf-multiselect-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 4px;
+  padding: 4px;
+  border: 1px solid var(--tf-hairline-soft);
+  border-radius: 6px;
+  background: var(--tf-surface);
+}
+
+.tf-multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.tf-multiselect-empty {
+  padding: 4px 6px;
+  color: var(--tf-muted);
+}
+
 /* category-tab */.tasks-view-group-btn.tasks-view-group-btn{
   flex: 1 1 0;
   min-width: 0;
