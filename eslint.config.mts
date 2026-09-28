@@ -9,6 +9,9 @@ export default tseslint.config(
 		'dist',
 		'esbuild.config.mjs',
 		'version-bump.mjs',
+		// scripts/ 下是独立的 Node 工具脚本（CI 校验用），不在 tsconfig 的类型项目内，
+		// 而 obsidianmd 的部分规则需要类型信息，会直接抛错。故整体排除。
+		'scripts',
 		'versions.json',
 		'main.js',
 		'package.json',
