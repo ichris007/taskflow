@@ -352,7 +352,7 @@ export class TaskFlowView extends ItemView {
 
 	private renderGroupNoteSelect(host: HTMLElement, group: TabGroupConfig): void {
 		const files = this.getGroupNoteFiles(this.activeGroup);
-		let selectedPath = this.selectedGroupNotePaths[this.activeGroup];
+		let selectedPath = this.selectedGroupNotePaths[this.activeGroup] ?? '';
 		if (!files.some((file) => file.path === selectedPath)) {
 			selectedPath = files[0]?.path ?? '';
 			this.selectedGroupNotePaths[this.activeGroup] = selectedPath;
