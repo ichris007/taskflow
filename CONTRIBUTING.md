@@ -25,9 +25,9 @@ A PR is merge-ready only when **all** of the following hold:
 1. A contributor opens a PR against `main`.
 2. A maintainer reviews it. If changes are needed, they submit a **Request changes** review with a concrete checklist (see template below) — this blocks the Merge button until addressed.
 3. The contributor pushes fixes and requests re-review.
-4. Merge happens only after **CI is green AND a maintainer approves**.
+4. Merge happens only after **CI is green AND a maintainer approves** (this step applies to external contributors; see the solo-maintainer note below).
 
-> `main` is protected: it requires passing status checks and at least one approving review, so a red CI or an unresolved review blocks merging automatically.
+> **Solo maintainer: branch protection is intentionally relaxed.** This project is maintained by a single person, so the `main` branch protection rule does **not** require a pull request or an approving review — direct pushes to `main` are allowed. CI still runs on every push and reports green/red, so it stays a useful signal (it just doesn't hard-block a push). Note: GitHub's *Require approvals* dropdown only offers 1–6 (never 0), and GitHub will not let you approve your own PR — so for a solo maintainer the PR + approval gate only ends up blocking yourself. External contributors who fork the repo can **never** push to `main` regardless of this setting; they can only open PRs, which you review and merge. When a second collaborator is added, re-enable *Require a pull request before merging* + *Require approvals = 1* in `Settings → Branches` to gate merges properly.
 
 ## Review checklist template (maintainer)
 
@@ -48,7 +48,7 @@ Request changes — please address the following before merge:
 - **The `tsc` squatting package is NOT in this repo.** The real TypeScript compiler is the `typescript` devDependency, and `npm run build` / the bare `tsc` command work correctly. A Pull Request *could* accidentally add the dummy `tsc` package (`npmjs.com/package/tsc`), which would shadow the real compiler on the PATH — if you see it in a PR, reject that dependency. As a safety net, CI calls the real binary directly (`node node_modules/typescript/bin/tsc`) so the type-check stays meaningful even if such a bad dependency slips through.
 - **Keep Node versions aligned.** CI builds on Node 22 to match the version used for local development and releases. If you change the local toolchain, update `node-version` in `.github/workflows/ci.yml` to match, so "works locally" equals "passes CI".
 - **i18n keys must stay symmetric.** `src/i18n.ts` has separate ZH and EN tables; a key present in one but missing in the other silently falls back to the raw key at runtime. This is now enforced automatically — `npm run check:i18n` runs in CI and fails the build if the ZH and EN key sets diverge, so missing translations are caught without manual review. Run it locally (`npm run check:i18n`) before pushing a PR that touches strings.
-- Prefer small, focused PRs over large ones — they are easier to review and to gate with the checklist above.
+- **Branch protection for a solo maintainer.** You don't need *Require a pull request before merging* when you're the only one pushing — turning it off lets you push `main` directly while CI still runs as a signal. It does not expose `main` to outside contributors (fork PRs still need your review + merge). Re-enable the PR + approval gate only after you add a second collaborator. See the note under *Review process* above.
 
 ## Releasing
 
