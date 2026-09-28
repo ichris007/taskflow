@@ -25,9 +25,7 @@ A PR is merge-ready only when **all** of the following hold:
 1. A contributor opens a PR against `main`.
 2. A maintainer reviews it. If changes are needed, they submit a **Request changes** review with a concrete checklist (see template below) — this blocks the Merge button until addressed.
 3. The contributor pushes fixes and requests re-review.
-4. Merge happens only after **CI is green AND a maintainer approves** (this step applies to external contributors; see the solo-maintainer note below).
-
-> **Solo maintainer: branch protection is intentionally relaxed.** This project is maintained by a single person, so the `main` branch protection rule does **not** require a pull request or an approving review — direct pushes to `main` are allowed. CI still runs on every push and reports green/red, so it stays a useful signal (it just doesn't hard-block a push). Note: GitHub's *Require approvals* dropdown only offers 1–6 (never 0), and GitHub will not let you approve your own PR — so for a solo maintainer the PR + approval gate only ends up blocking yourself. External contributors who fork the repo can **never** push to `main` regardless of this setting; they can only open PRs, which you review and merge. When a second collaborator is added, re-enable *Require a pull request before merging* + *Require approvals = 1* in `Settings → Branches` to gate merges properly.
+4. Merge happens only after **CI is green AND a maintainer approves**.
 
 ## Review checklist template (maintainer)
 
