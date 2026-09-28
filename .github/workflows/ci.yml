@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Defense-in-depth: a Pull Request could accidentally add the squatting
+      # `tsc` package (npmjs.com/package/tsc) to dependencies, which would
+      # shadow the real TypeScript on the PATH. We call the real compiler
+      # binary directly so the check stays meaningful even in that case.
+      # The correct fix is still to reject such a dependency in review.
+      - name: Type check
+        run: node node_modules/typescript/bin/tsc -noEmit -skipLibCheck
+      - name: Bundle
+        run: node esbuild.config.mjs production
+      - name: Lint
+        run: npm run lint
+      - name: Check i18n key symmetry
+        run: node scripts/check-i18n.mjs
