@@ -298,6 +298,14 @@ If you're using TaskFlow, you can pair it with this snippet to unify the overall
 
 ---
 
+## 08｜Full User Guide
+
+📚  Installation walkthrough, screenshots, custom queries:
+
+ [TaskFlow Guide](https://lifein.vip/插件/TaskFlow-guide/)
+
+
+---
 ## About the Author
 
 ### **猎人科叔** **(Uncle Ke)**
@@ -307,10 +315,6 @@ If you're using TaskFlow, you can pair it with this snippet to unify the overall
 - Creator under the name **"猎人科叔"** across social platforms.
 
 For more of Chris's work on Obsidian productivity and knowledge management — including example vaults, plugins, scripts, and practical workflows — visit [Lifein](https://lifein.vip/).
-
----
-
-> 📚 Full user guide (installation walkthrough, screenshots, custom queries): [TaskFlow Guide](https://lifein.vip/插件/TaskFlow-guide/)
 
 ---
 
