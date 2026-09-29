@@ -1,7 +1,7 @@
 {
 	"id": "taskflow",
 	"name": "TaskFlow",
-	"version": "1.0.4",
+	"version": "1.1.0",
 	"minAppVersion": "1.12.7",
 	"description": "An action workbench for Tasks that reduces decision cost and helps you start faster.",
 	"author": "iChris007",

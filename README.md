@@ -310,6 +310,10 @@ For more of Chris's work on Obsidian productivity and knowledge management — i
 
 ---
 
+> 📚 Full user guide (installation walkthrough, screenshots, custom queries): [TaskFlow Guide](https://lifein.vip/插件/TaskFlow-guide/)
+
+---
+
 ## 📄 License
 
 See the `LICENSE` file in the repository.

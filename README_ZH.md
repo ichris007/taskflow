@@ -291,6 +291,10 @@ TaskFlow 最终想带来的改变，可以浓缩成一句话：
 
 ---
 
+> 📚 完整使用指南（安装手把手、界面截图、自定义查询等）：[TaskFlow 使用指南](https://lifein.vip/插件/TaskFlow-guide/)
+
+---
+
 ## 📄 License
 
 请参见仓库中的 LICENSE 文件。

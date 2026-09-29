@@ -145,6 +145,8 @@ export interface TaskViewsData {
 	 * false = 整条文字横幅不渲染（时钟定时器也不挂），封面区域不受此开关影响。
 	 */
 	showHeadText: boolean;
+	/** 是否在分组视图顶部显示「任务上限」输入框；false = 不显示（默认），此时上限仍由分组配置里的 taskLimit 决定 */
+	showFrontendLimit: boolean;
 	/** 插件默认打开位置：主窗口（main）或右侧边栏（sidebar） */
 	openLocation: 'main' | 'sidebar';
 }

@@ -483,6 +483,7 @@ export const DEFAULT_SETTINGS: TaskViewsSettings = {
 		importantReminderQuery: DEFAULT_IMPORTANT_QUERY,
 		showStatsCategories: DEFAULT_SHOW_STATS_CATEGORIES,
 		showHeadText: DEFAULT_SHOW_HEAD_TEXT,
+		showFrontendLimit: false,
 		openLocation: DEFAULT_OPEN_LOCATION,
 	},
 	language: DEFAULT_LANGUAGE,
@@ -583,6 +584,7 @@ export function migrateSettings(loaded: Partial<TaskViewsSettings>): TaskViewsSe
 				showStatsCategories: data.showStatsCategories ?? DEFAULT_SHOW_STATS_CATEGORIES,
 				// 头部文字与打开位置：老配置补默认（显示 / 主窗口）
 				showHeadText: data.showHeadText ?? DEFAULT_SHOW_HEAD_TEXT,
+				showFrontendLimit: data.showFrontendLimit ?? false,
 				openLocation: data.openLocation === 'sidebar' ? 'sidebar' : 'main',
 			},
 		};
@@ -627,6 +629,7 @@ export function migrateSettings(loaded: Partial<TaskViewsSettings>): TaskViewsSe
 			importantReminderQuery: DEFAULT_IMPORTANT_QUERY,
 			showStatsCategories: DEFAULT_SHOW_STATS_CATEGORIES,
 			showHeadText: DEFAULT_SHOW_HEAD_TEXT,
+			showFrontendLimit: false,
 			openLocation: DEFAULT_OPEN_LOCATION,
 		},
 		language: 'auto',
@@ -831,20 +834,35 @@ export class SettingsManager {
 			card.createDiv( { cls: 'tf-settings-card-caption', text: t('settings.head.title') });
 			const rows = card.createDiv( { cls: 'tf-settings-rows' });
 
-			renderTFRow(rows, {
-				title: t('settings.head.textTitle'),
-				description: t('settings.head.textDesc'),
-				fill: (control) => {
-					renderTFSwitch(control, {
-						checked: data.showHeadText,
-						label: t('settings.head.textTitle'),
-						onChange: (value) => {
-							data.showHeadText = value;
-							void this.saveSettings();
-						},
-					});
-				},
-			});
+		renderTFRow(rows, {
+			title: t('settings.head.textTitle'),
+			description: t('settings.head.textDesc'),
+			fill: (control) => {
+				renderTFSwitch(control, {
+					checked: data.showHeadText,
+					label: t('settings.head.textTitle'),
+					onChange: (value) => {
+						data.showHeadText = value;
+						void this.saveSettings();
+					},
+				});
+			},
+		});
+
+		renderTFRow(rows, {
+			title: t('settings.frontendLimit.show'),
+			description: t('settings.frontendLimit.showDesc'),
+			fill: (control) => {
+				renderTFSwitch(control, {
+					checked: data.showFrontendLimit,
+					label: t('settings.frontendLimit.show'),
+					onChange: (value) => {
+						data.showFrontendLimit = value;
+						void this.saveSettings();
+					},
+				});
+			},
+		});
 
 			renderTFRow(rows, {
 				title: t('settings.head.workbench'),

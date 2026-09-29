@@ -380,6 +380,21 @@ export class GroupEditModal extends TFEditModal {
 
 		this.valuesHost = this.formEl?.createDiv({ cls: 'tf-field' }) ?? null;
 		this.renderValuesPicker();
+
+		// 上限放到属性值筛选之后：笔记筛选属性(属性) 与 属性值筛选 紧邻，逻辑更顺
+		this.addField({
+			key: 'taskLimit',
+			label: t('view.group.limit'),
+			description: t('view.group.limitDesc'),
+			type: 'text',
+			placeholder: t('view.group.limit'),
+			value: this.group.taskLimit != null ? String(this.group.taskLimit) : '',
+			onChange: (v) => {
+				const parsed = parseInt((v as string) ?? '', 10);
+				this.group.taskLimit = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+				this.markDirty();
+			},
+		});
 	}
 
 	onClose(): void {
@@ -438,6 +453,18 @@ export class GroupEditModal extends TFEditModal {
 			list.createDiv({ cls: 'tf-multiselect-empty', text: t('modal.groupNoteValuesNone') });
 			return;
 		}
+		const search = list.createEl('input', {
+			cls: 'tf-multiselect-search',
+			attr: { type: 'text', placeholder: t('view.group.searchNote'), 'aria-label': t('view.group.searchNote') },
+		});
+		search.addEventListener('input', () => {
+			const q = search.value.trim().toLowerCase();
+			list.querySelectorAll('.tf-multiselect-option').forEach((row) => {
+				const el = row as HTMLElement;
+				const text = (el.textContent ?? '').toLowerCase();
+				el.style.display = !q || text.includes(q) ? '' : 'none';
+			});
+		});
 		for (const value of options) {
 			const row = list.createEl('label', { cls: 'tf-multiselect-option' });
 			const checkbox = row.createEl('input', { attr: { type: 'checkbox' } });

@@ -323,7 +323,7 @@ export class TaskFlowView extends ItemView {
 		const group = this.getGroups().find((item) => item.id === this.activeGroup);
 		if (!group) return;
 		if (group.frontmatterProperty?.trim()) this.renderGroupNoteSelect(host, group);
-		this.renderGroupLimitInput(host, group);
+		if (this.plugin.settings.data.showFrontendLimit) this.renderGroupLimitInput(host, group);
 	}
 
 	private renderGroupLimitInput(host: HTMLElement, group: TabGroupConfig): void {
@@ -358,23 +358,95 @@ export class TaskFlowView extends ItemView {
 			this.selectedGroupNotePaths[this.activeGroup] = selectedPath;
 		}
 
-		const select = host.createEl('select', {
-			cls: 'tasks-view-group-note-select',
-			attr: { 'aria-label': t('view.group.selectNote', { group: group.label }) },
-		});
 		if (files.length === 0) {
-			select.createEl('option', { text: t('view.group.noMatchingNotes') });
-			select.disabled = true;
+			host.createSpan({ cls: 'tasks-view-group-note-none', text: t('view.group.noMatchingNotes') });
 			return;
 		}
-		for (const file of files) {
-			select.createEl('option', { text: file.path.replace(/\.md$/i, ''), value: file.path });
-		}
-		select.value = selectedPath;
-		select.addEventListener('change', () => {
-			this.selectedGroupNotePaths[this.activeGroup] = select.value;
-			void this.renderActiveTabGuarded();
+
+		// 触发器：始终显示当前选中的笔记名，点击展开下拉面板（点选优先）
+		const trigger = host.createDiv({ cls: 'tasks-view-group-note-trigger' });
+		trigger.createSpan({
+			cls: 'tasks-view-group-note-current',
+			text: selectedPath ? selectedPath.replace(/\.md$/i, '') : t('view.group.selectNote', { group: group.label }),
 		});
+		trigger.createSpan({ cls: 'tasks-view-group-note-caret', text: '▾' });
+
+		// 弹层必须挂到 trigger 内部：trigger 是 position:relative 的已定位祖先，
+		// top:100% 才能严格落在「文件点选框正下方」。挂到 host（未定位）会让
+		// absolute 一路上溯到包住整个视图的高祖先，弹层掉到统计面板之下。
+		const panel = trigger.createDiv({ cls: 'tasks-view-group-note-panel' });
+		const search = panel.createEl('input', {
+			cls: 'tasks-view-group-note-search',
+			attr: { type: 'text', placeholder: t('view.group.searchNote'), 'aria-label': t('view.group.searchNote') },
+		});
+		const list = panel.createDiv({ cls: 'tasks-view-group-note-list' });
+		const backdrop = host.createDiv({ cls: 'tasks-view-group-note-backdrop' });
+		backdrop.hide();
+
+		// 鼠标离开后延时自动关闭：只看了一眼就移开时，弹层应自行收起
+		const HOVER_CLOSE_DELAY = 400;
+		let closeTimer: number | null = null;
+		const clearCloseTimer = (): void => {
+			if (closeTimer !== null) {
+				window.clearTimeout(closeTimer);
+				closeTimer = null;
+			}
+		};
+
+		const renderList = (filter: string): void => {
+			list.empty();
+			const q = filter.trim().toLowerCase();
+			const matched = q ? files.filter((f) => f.path.toLowerCase().includes(q)) : files;
+			if (matched.length === 0) {
+				list.createDiv({ cls: 'tasks-view-group-note-empty', text: t('view.group.noMatchingNotes') });
+				return;
+			}
+			for (const file of matched) {
+				const item = list.createDiv({ cls: 'tasks-view-group-note-item' });
+				if (file.path === selectedPath) item.addClass('is-selected');
+				item.setText(file.path.replace(/\.md$/i, ''));
+				item.addEventListener('click', (e) => {
+					e.stopPropagation();
+					this.selectedGroupNotePaths[this.activeGroup] = file.path;
+					void this.renderActiveTabGuarded();
+					closePanel();
+				});
+			}
+		};
+
+		const closePanel = (): void => {
+			clearCloseTimer();
+			panel.removeClass('is-open');
+			backdrop.hide();
+		};
+		const openPanel = (): void => {
+			clearCloseTimer();
+			panel.addClass('is-open');
+			search.value = '';
+			renderList('');
+			search.focus();
+			backdrop.show();
+		};
+
+		trigger.addEventListener('click', (e) => {
+			e.stopPropagation();
+			if (panel.hasClass('is-open')) closePanel();
+			else openPanel();
+		});
+		search.addEventListener('input', () => renderList(search.value));
+		search.addEventListener('click', (e) => e.stopPropagation());
+		backdrop.addEventListener('click', () => closePanel());
+
+		// 鼠标移出（含弹层）后延时收起；移回则取消。正在输入搜索时不自动关，避免丢失查询。
+		trigger.addEventListener('mouseleave', () => {
+			closeTimer = window.setTimeout(() => {
+				if (search.value.trim() && panel.contains(document.activeElement)) return;
+				closePanel();
+			}, HOVER_CLOSE_DELAY);
+		});
+		trigger.addEventListener('mouseenter', () => clearCloseTimer());
+
+		renderList('');
 	}
 
 	/**
