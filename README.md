@@ -302,7 +302,7 @@ If you're using TaskFlow, you can pair it with this snippet to unify the overall
 
 📚  Installation walkthrough, screenshots, custom queries:
 
- [TaskFlow Guide](https://lifein.vip/插件/TaskFlow-guide/)
+ [TaskFlow Guide](https://lifein.vip/插件/TaskFlow-guide/en/taskflow-guide)
 
 
 ---
