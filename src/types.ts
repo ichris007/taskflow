@@ -19,6 +19,39 @@ export interface TabGroupConfig {
 	id: string;
 	label: string;
 	icon: string;
+	frontmatterProperty?: string;
+	/** Empty/undefined means any non-empty value matches */
+	frontmatterValues?: string[];
+	/** Appended as `limit N` to every query in this group */
+	taskLimit?: number;
+}
+
+/** Read a frontmatter property, falling back to a case-insensitive key match. */
+export function getFrontmatterValue(frontmatter: Record<string, unknown> | undefined, property: string): unknown {
+	if (!frontmatter) return undefined;
+	if (property in frontmatter) return frontmatter[property];
+	const lower = property.toLowerCase();
+	const key = Object.keys(frontmatter).find((k) => k.toLowerCase() === lower);
+	return key === undefined ? undefined : frontmatter[key];
+}
+
+/** Flatten a frontmatter value (list, comma-separated string, or wikilink) into non-empty strings. */
+export function normalizeFrontmatterValues(value: unknown): string[] {
+	if (value === undefined || value === null) return [];
+	if (Array.isArray(value)) return value.flatMap((item) => normalizeFrontmatterValues(item));
+	if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return [];
+	const parts = typeof value === 'string' ? value.split(/,(?![^[]*\]\])/) : [String(value)];
+	return parts
+		.map((part) => part.trim().replace(/^\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]$/, '$1').trim())
+		.filter((part) => part !== '');
+}
+
+export function matchesFrontmatterFilter(value: unknown, wanted: string[] | undefined): boolean {
+	const values = normalizeFrontmatterValues(value);
+	if (values.length === 0) return false;
+	if (!wanted || wanted.length === 0) return true;
+	const wantedSet = new Set(wanted.map((item) => item.toLowerCase()));
+	return values.some((item) => wantedSet.has(item.toLowerCase()));
 }
 
 /**
@@ -72,7 +105,7 @@ export interface TaskViewsData {
 	excludedFolders: string;
 	globalTabs: TabConfig[]; // Global default tabs
 	boards: Board[];         // All boards (including default dashboard)
-	groups: { id: string, label: string, icon: string }[]; // Available tab groups
+	groups: TabGroupConfig[]; // Available tab groups
 	/* ── 头部（工作台头部横幅）───────────────────────────
 	   对应 Lyra 的 wbTitle + banner：名字可自定义，封面图可换可移除。 */
 	workbenchTitle: string;  // 头部大字，也是「工作台名」
