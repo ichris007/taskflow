@@ -149,6 +149,24 @@ export interface TaskViewsData {
 	showFrontendLimit: boolean;
 	/** 插件默认打开位置：主窗口（main）或右侧边栏（sidebar） */
 	openLocation: 'main' | 'sidebar';
+	/* ── 紧凑模式（侧边栏 / 窄屏 / 移动端）────────────────────────
+	   视图容器宽度小于阈值时自动收起占用垂直/水平空间大的模块，
+	   让任务列表在侧边栏里也能看清。总开关 + 各模块独立开关：
+	   总开关关则任何宽度都保持完整界面；总开关开且宽度够宽也不压缩。 */
+	/** 紧凑模式总开关：窄视图下自动收起大模块；false = 始终完整界面 */
+	sidebarCompact: boolean;
+	/** 紧凑模式下是否隐藏封面横幅（只控封面图，不影响下方的标题行） */
+	compactHideBanner: boolean;
+	/** 紧凑模式下是否隐藏标题行（工作台名 + slogan + 右侧日期时间） */
+	compactHideTitle: boolean;
+	/** 紧凑模式下是否隐藏「今日概览」面板 */
+	compactHideTodayOverview: boolean;
+	/** 紧凑模式下是否隐藏「重要提醒」面板 */
+	compactHideImportantReminders: boolean;
+	/** 紧凑模式下是否隐藏底部统计栏 */
+	compactHideStats: boolean;
+	/** 笔记选择器里「按分组各自收藏」的笔记 path 列表：分组 id → 该组收藏的笔记 path 数组（per-group 收藏） */
+	pinnedNotePaths: Record<string, string[]>;
 }
 
 /** 打开位置：主窗口 / 右侧边栏 */
@@ -244,6 +262,26 @@ export const DEFAULT_SHOW_HEAD_TEXT = true;
 
 /** 插件默认打开位置：主窗口 */
 export const DEFAULT_OPEN_LOCATION: OpenLocation = 'main';
+
+/** 紧凑模式：窄视图下自动收起大模块。总开关默认开（侧边栏/移动端体验更好）。 */
+export const DEFAULT_SIDEBAR_COMPACT = true;
+
+/** 紧凑模式下默认隐藏的模块（用户可在设置里单独打开）。 */
+export const DEFAULT_COMPACT_HIDE_BANNER = true;
+export const DEFAULT_COMPACT_HIDE_TITLE = true;
+export const DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW = true;
+export const DEFAULT_COMPACT_HIDE_IMPORTANT_REMINDERS = true;
+export const DEFAULT_COMPACT_HIDE_STATS = true;
+
+/** 笔记选择器按分组收藏的笔记：默认不收藏任何（per-group 空数组） */
+export const DEFAULT_PINNED_NOTE_PATHS: Record<string, string[]> = {};
+
+/**
+ * 触发紧凑模式的容器宽度阈值（px）。
+ * 侧边栏默认宽度 300–350，窄分屏与移动端（≤400）都会命中，主窗口不会。
+ * 同时作为「一级 tab 只显示图标」的判定点：低于它空间不够放 icon+文字。
+ */
+export const COMPACT_WIDTH_THRESHOLD = 360;
 
 /** 界面语言默认跟随 Obsidian 系统语言 */
 export const DEFAULT_LANGUAGE: LangSetting = 'auto';

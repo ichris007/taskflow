@@ -35,7 +35,12 @@ export default class TaskFlowPlugin extends Plugin {
 		});
 		// 换成自绘品牌标识（蓝紫渐变圆角方块 + 两道白波），与设置面板「关于」页同一枚；
 		// 挂载失败则保留上面的 layout-dashboard 兜底，不至于没有图标可点。
-		if (!mountTrustedSvg(ribbonEl, TASKFLOW_ICON_SVG)) {
+		if (mountTrustedSvg(ribbonEl, TASKFLOW_ICON_SVG)) {
+			// addRibbonIcon 已经先塞了一个 lucide layout-dashboard 图标；
+			// 某些主题不会自动隐藏它，于是会并排出现两个图标。挂载成功后把原始图标清掉，
+			// 只留品牌标识。
+			ribbonEl.querySelectorAll('svg:not(.tf-brand-mark)').forEach((el) => el.remove());
+		} else {
 			// 挂载失败：保留 addRibbonIcon 的 layout-dashboard 兜底图标，无需额外处理
 		}
 
@@ -142,6 +147,15 @@ export default class TaskFlowPlugin extends Plugin {
 		for (const leaf of leaves) {
 			const view = leaf.view as TaskFlowView;
 			view.applyStatsCategories(expanded);
+		}
+	}
+
+	/** 紧凑模式设置变更后，立刻让所有已打开的视图按新设置 + 当前宽度重算（无需重建 DOM）。 */
+	applyCompact() {
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TASKFLOW);
+		for (const leaf of leaves) {
+			const view = leaf.view as TaskFlowView;
+			view.applyCompactMode();
 		}
 	}
 }

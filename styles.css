@@ -538,7 +538,7 @@
 .tasks-view-group-note-panel.is-open { display: flex; }
 .tasks-view-group-note-search {
   margin: 6px;
-  padding: 5px 8px;
+  padding: 5px 30px 5px 8px;
   color: var(--tf-text);
   background: var(--tf-canvas);
   border: 1px solid var(--tf-hairline-soft);
@@ -550,9 +550,16 @@
   padding: 2px;
 }
 .tasks-view-group-note-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 6px 8px;
   border-radius: 5px;
   cursor: pointer;
+}
+.tasks-view-group-note-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -563,6 +570,58 @@
 .tasks-view-group-note-item.is-selected {
   background: var(--tf-surface-strong);
   font-weight: 600;
+}
+.tasks-view-group-note-fav {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--tf-text);
+  opacity: 0.45;
+  cursor: pointer;
+}
+.tasks-view-group-note-fav:hover {
+  opacity: 0.9;
+  background: var(--tf-surface-strong);
+}
+.tasks-view-group-note-fav.is-favorited {
+  opacity: 1;
+  color: var(--tf-accent, #6c5ce7);
+}
+.tasks-view-group-note-sep {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--tf-hairline-soft);
+}
+.tasks-view-group-note-fav-filter {
+  position: absolute;
+  top: 9px;
+  right: 11px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--tf-text);
+  opacity: 0.5;
+  cursor: pointer;
+}
+.tasks-view-group-note-fav-filter:hover {
+  opacity: 0.9;
+  background: var(--tf-surface-strong);
+}
+.tasks-view-group-note-fav-filter.is-active {
+  opacity: 1;
+  color: var(--tf-accent, #6c5ce7);
+}
+.is-mobile .tasks-view-group-note-fav,
+.is-mobile .tasks-view-group-note-fav-filter {
+  width: 30px;
+  height: 30px;
 }
 .tasks-view-group-note-empty,
 .tasks-view-group-note-none {
@@ -2888,4 +2947,93 @@
 .is-mobile .tf-brand-mark {
   width: 24px;
   height: 24px;
+}
+
+/* ═══ 20. 紧凑模式（侧边栏 / 窄屏 / 移动端）═══════════════════
+   由 view.ts 的 ResizeObserver 在「容器宽度 < COMPACT_WIDTH_THRESHOLD(360px)
+   且总开关开启」时，给 .tasks-view-container 加 .is-compact；CSS 据此收起
+   占用空间大的模块。三个 .keep-* 由「各模块独立开关」控制，可把某模块
+   留在紧凑界面里。纯 CSS 隐藏：响应即时、不重建 DOM、性能开销可忽略。
+   移动端宽度通常 ≤400px，会自然命中，无需单独适配。
+   ───────────────────────────────────────────────────────────── */
+
+/* 1) 一级 tab（分组）：只显示图标，文字行隐藏。
+   tooltip 已由视图给按钮加 title（桌面端 hover 可见），并补 aria-label 兜底无障碍。 */
+.tasks-view-container.is-compact .tasks-view-group-label { display: none; }
+.tasks-view-container.is-compact .tasks-view-group-btn {
+  flex: 0 0 auto;
+  width: 32px;
+  padding: 0;
+  gap: 0;
+}
+.tasks-view-container.is-compact .tasks-view-group-btn .tasks-view-group-icon {
+  width: 18px;
+  height: 18px;
+}
+.tasks-view-container.is-compact .tasks-view-group-btn .tasks-view-group-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ═══ 紧凑模式（侧边栏 / 窄屏 / 移动端）═══════════════════════════════════════
+   总开关 sidebarCompact 开且容器宽度 < 360px 时进入。两层：
+   1) 模块可见性：统一由 .keep-* 类驱动（常规与紧凑共用同一套规则）。
+      keep-* 在 view.applyCompactMode() 按「常规开关 ∥（紧凑且未隐藏）」计算，
+      所以两种宽度判定一致、切换无闪烁。
+   2) 紧凑专属布局：整页单滚动 + 导航吸顶（仅 .is-compact 下生效，常规模式不变）。 */
+
+/* 导航条容器：常规模式 display:contents 形同不存在；紧凑模式 sticky 吸顶 */
+.tasks-view-nav { display: contents; }
+
+/* 1) 模块可见性 ── 横幅拆封面 / 标题；面板拆今日概览 / 重要提醒；底部统计独立 */
+.tasks-view-container:not(.keep-banner) .tf-head-cover { display: none; }
+.tasks-view-container:not(.keep-title) .tf-head-row { display: none; }
+.tasks-view-container:not(.keep-banner):not(.keep-title) .tf-head { display: none; }
+
+.tasks-view-container:not(.keep-today) .tf-today { display: none; }
+.tasks-view-container:not(.keep-important) .tf-important { display: none; }
+.tasks-view-container:not(.keep-today):not(.keep-important) .tf-panels { display: none; }
+
+.tasks-view-container:not(.keep-stats) .tasks-view-stats { display: none; }
+
+/* 2) 紧凑布局：整页单滚动 + 导航吸顶（快捷输入 / 分组栏 / 二级 tab 栏 一起吸顶） */
+.tasks-view-container.is-compact .tf-panels { flex-direction: column; }
+
+.tasks-view-container.is-compact .tasks-view-main {
+  overflow-y: auto;
+}
+.tasks-view-container.is-compact .tasks-view-nav {
+  display: flex;
+  flex-direction: column;
+  /* 导航吸顶但要按自身内容取高，不能被 flex 拉伸/压缩（否则吸顶时高度错乱） */
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--tf-canvas);
+}
+/* 关键：整页单滚动下，任务列表容器必须按内容自然撑高（flex:0 0 auto），
+   否则 flex 会把它压成「剩余空间高度」，而任务列表 overflow:visible 的溢出部分
+   不计入滚动高度，被根容器 overflow:hidden 裁掉、且永远滚不到（任务列表消失）。
+   只有它按内容撑高，.tasks-view-main 才能整页滚动到任务列表。 */
+.tasks-view-container.is-compact .tasks-view-tab-panels {
+  position: static;
+  flex: 0 0 auto;
+  min-height: 0;
+  overflow: visible;
+}
+.tasks-view-container.is-compact .tasks-view-tab-panel {
+  position: static;
+  inset: auto;
+  overflow: visible;
+}
+
+/* 3) 二级 tab 栏：scroll-snap 让滑动更跟手；可滚动时在最左/最右画渐变，
+   暗示「后面还有 tab」。渐变只在 .can-scroll 时生效（由视图按 scrollWidth 判定）。 */
+.tasks-view-tab-segment { scroll-snap-type: x proximity; }
+.tasks-view-tab-btn { scroll-snap-align: start; }
+
+.tasks-view-tab-segment.can-scroll {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
 }

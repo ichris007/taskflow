@@ -3,6 +3,7 @@ import type TaskViewsPlugin from './main';
 import type { TabConfig, TabGroup, TabGroupConfig, Task } from './types';
 import {
 	clampCoverPosition,
+	COMPACT_WIDTH_THRESHOLD,
 	DEFAULT_IMPORTANT_QUERY,
 	getTabGroup,
 	getFrontmatterValue,
@@ -251,7 +252,7 @@ export class TaskFlowView extends ItemView {
 	// 重要提醒（Important reminders）模块
 	private importantBodyEl: HTMLElement | null = null;
 	private importantMoreEl: HTMLElement | null = null;
-	/** 「更多任务」展开态：默认折叠（最多显示 3 条），点击展开看全部；每次重渲染复位成折叠 */
+	/** 「更多任务」展开态：默认折叠（最多显示 3 条），点击展开看全部；完整刷新时复位成折叠 */
 	private importantExpanded = false;
 	/** 空状态静默判定定时器 */
 	private importantEmptyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -272,6 +273,10 @@ export class TaskFlowView extends ItemView {
 	private zeroRetries = 0;
 	/** 每个 body 的计数去抖定时器 */
 	private countTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+	/** 紧凑模式：直接引用 shell 根容器，避免每次从 containerEl 重新取；宽度监测靠它 */
+	private shellEl: HTMLElement | null = null;
+	/** 紧凑模式：容器宽度变化时触发重算的监听器；关闭视图时断开 */
+	private compactObserver: ResizeObserver | null = null;
 	/** 已挂载空状态观察者的 tab body（幂等，避免重复挂 MutationObserver） */
 	private observedBodies = new WeakSet<HTMLElement>();
 	/** 已挂载观察者的「重要提醒」body */
@@ -363,6 +368,9 @@ export class TaskFlowView extends ItemView {
 			return;
 		}
 
+		// 「仅看收藏」临时过滤：不持久化，每次开面板重置为 false
+		let onlyFavorites = false;
+
 		// 触发器：始终显示当前选中的笔记名，点击展开下拉面板（点选优先）
 		const trigger = host.createDiv({ cls: 'tasks-view-group-note-trigger' });
 		trigger.createSpan({
@@ -379,6 +387,11 @@ export class TaskFlowView extends ItemView {
 			cls: 'tasks-view-group-note-search',
 			attr: { type: 'text', placeholder: t('view.group.searchNote'), 'aria-label': t('view.group.searchNote') },
 		});
+		// 仅看收藏开关（内存态）：star 图标按钮，激活时高亮
+		const favFilter = panel.createDiv({ cls: 'tasks-view-group-note-fav-filter' });
+		setIcon(favFilter.createSpan(), 'star');
+		favFilter.setAttribute('title', t('view.group.onlyFavorites'));
+		favFilter.setAttribute('aria-label', t('view.group.onlyFavorites'));
 		const list = panel.createDiv({ cls: 'tasks-view-group-note-list' });
 		const backdrop = host.createDiv({ cls: 'tasks-view-group-note-backdrop' });
 		backdrop.hide();
@@ -396,22 +409,47 @@ export class TaskFlowView extends ItemView {
 		const renderList = (filter: string): void => {
 			list.empty();
 			const q = filter.trim().toLowerCase();
-			const matched = q ? files.filter((f) => f.path.toLowerCase().includes(q)) : files;
+			const pinned = this.plugin.settings.data.pinnedNotePaths[group.id] ?? [];
+			let matched = q ? files.filter((f) => f.path.toLowerCase().includes(q)) : files;
+			if (onlyFavorites) matched = matched.filter((f) => pinned.includes(f.path));
 			if (matched.length === 0) {
 				list.createDiv({ cls: 'tasks-view-group-note-empty', text: t('view.group.noMatchingNotes') });
 				return;
 			}
-			for (const file of matched) {
+			// 仅「浏览态」（无搜索词且未开仅看收藏）才把收藏项置顶，避免打散搜索结果
+			const pinFirst = !q && !onlyFavorites;
+			const pinnedFiles = matched.filter((f) => pinned.includes(f.path));
+			const otherFiles = matched.filter((f) => !pinned.includes(f.path));
+			const ordered = pinFirst ? [...pinnedFiles, ...otherFiles] : matched;
+			ordered.forEach((file, idx) => {
 				const item = list.createDiv({ cls: 'tasks-view-group-note-item' });
 				if (file.path === selectedPath) item.addClass('is-selected');
-				item.setText(file.path.replace(/\.md$/i, ''));
+				// 整行 title 显示完整路径：窄弹层下文件名被省略号截断时，hover/长按仍可见全名
+				item.setAttribute('title', file.path.replace(/\.md$/i, ''));
+				const name = item.createSpan({ cls: 'tasks-view-group-note-item-name' });
+				name.setText(file.path.replace(/\.md$/i, ''));
+				// 收藏按钮（star）：阻止冒泡避免关面板；点击 toggle 并即时重渲染
+				const fav = item.createDiv({ cls: 'tasks-view-group-note-fav' + (pinned.includes(file.path) ? ' is-favorited' : '') });
+				setIcon(fav.createSpan(), 'star');
+				fav.setAttribute('title', pinned.includes(file.path) ? t('view.group.unfavoriteNote') : t('view.group.favoriteNote'));
+				fav.setAttribute('aria-label', pinned.includes(file.path) ? t('view.group.unfavoriteNote') : t('view.group.favoriteNote'));
+				fav.addEventListener('click', (e) => {
+					e.stopPropagation();
+					e.preventDefault();
+					this.toggleFavorite(group.id, file.path);
+					renderList(filter);
+				});
 				item.addEventListener('click', (e) => {
 					e.stopPropagation();
 					this.selectedGroupNotePaths[this.activeGroup] = file.path;
 					void this.renderActiveTabGuarded();
 					closePanel();
 				});
-			}
+				// pin 区与普通区之间加一条发丝线（仅浏览态、且两者都非空时，插在最后一个 pin 项之后）
+				if (pinFirst && idx === pinnedFiles.length - 1 && otherFiles.length > 0) {
+					list.createDiv({ cls: 'tasks-view-group-note-sep' });
+				}
+			});
 		};
 
 		const closePanel = (): void => {
@@ -421,6 +459,8 @@ export class TaskFlowView extends ItemView {
 		};
 		const openPanel = (): void => {
 			clearCloseTimer();
+			onlyFavorites = false;
+			favFilter.removeClass('is-active');
 			panel.addClass('is-open');
 			search.value = '';
 			renderList('');
@@ -435,6 +475,14 @@ export class TaskFlowView extends ItemView {
 		});
 		search.addEventListener('input', () => renderList(search.value));
 		search.addEventListener('click', (e) => e.stopPropagation());
+		// 仅看收藏开关：阻止冒泡 + 切换状态 + 即时重渲染（保留当前搜索词）
+		favFilter.addEventListener('click', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			onlyFavorites = !onlyFavorites;
+			favFilter.toggleClass('is-active', onlyFavorites);
+			renderList(search.value);
+		});
 		backdrop.addEventListener('click', () => closePanel());
 
 		// 鼠标移出（含弹层）后延时收起；移回则取消。正在输入搜索时不自动关，避免丢失查询。
@@ -447,6 +495,17 @@ export class TaskFlowView extends ItemView {
 		trigger.addEventListener('mouseenter', () => clearCloseTimer());
 
 		renderList('');
+	}
+
+	/** 笔记选择器：切换某分组下某笔记的收藏状态，并写盘持久化（data.json）。 */
+	private toggleFavorite(groupId: string, path: string): void {
+		const map = this.plugin.settings.data.pinnedNotePaths;
+		const arr = map[groupId] ?? [];
+		const i = arr.indexOf(path);
+		if (i >= 0) arr.splice(i, 1);
+		else arr.push(path);
+		map[groupId] = arr;
+		void this.plugin.saveSettings();
 	}
 
 	/**
@@ -490,12 +549,18 @@ export class TaskFlowView extends ItemView {
 		});
 
 		this.buildShell();
+		this.setupCompactObserver();
 		await this.refresh();
 		this.registerVaultWatcher();
 	}
 
 	async onClose(): Promise<void> {
 		this.stopHeadClock();
+		// 断开宽度监听：视图关掉还挂着 ResizeObserver 只会一直回调一个不在文档里的容器
+		if (this.compactObserver) {
+			this.compactObserver.disconnect();
+			this.compactObserver = null;
+		}
 		if (this.statsTimer) window.clearTimeout(this.statsTimer);
 		if (this.contentTimer) window.clearTimeout(this.contentTimer);
 		this.clearZeroRetry();
@@ -513,6 +578,8 @@ export class TaskFlowView extends ItemView {
 		const container = this.containerEl.children[1] as HTMLElement;
 		container.empty();
 		container.addClass('tasks-view-container');
+		// 直接持有根容器引用：紧凑模式靠它量宽度、挂 ResizeObserver，避免每次从 containerEl 重新取
+		this.shellEl = container;
 
 		// Clear cached element references to avoid stale DOM pointers
 		this.groupBtns = {};
@@ -566,19 +633,27 @@ export class TaskFlowView extends ItemView {
 		// 主内容区
 		const main = container.createDiv( { cls: 'tasks-view-main' });
 
-		// 面板模块（今日概览 / 重要提醒）：都在快捷输入框「上方」、并排展示。
-		// 关掉其中一个，另一个自动占满整行；两个都关则整块不渲染。
+		// 面板模块（今日概览 / 重要提醒）：在快捷输入框「上方」。
+		// 常规关掉某块仍可保留 DOM（compactEligible 时），让紧凑模式能单独把它显示出来；
+		// 可见性由 applyCompactMode() 的 keep-today / keep-important 类控制。
 		const data = this.plugin.settings.data;
-		if (data.showTodayOverview || data.showImportantReminders) {
+		const compactEligible = !!data.sidebarCompact;
+		if (data.showTodayOverview || data.showImportantReminders || compactEligible) {
 			const panels = main.createDiv( { cls: 'tf-panels' });
-			if (data.showTodayOverview) this.renderTodayOverview(panels);
-			if (data.showImportantReminders) this.renderImportantModule(panels);
+			if (data.showTodayOverview || compactEligible) this.renderTodayOverview(panels);
+			if (data.showImportantReminders || compactEligible) this.renderImportantModule(panels);
 		}
 
-		this.renderQuickAdd(main);
-		this.renderGroupTabs(main);
-		this.renderTabs(main);
+		// 导航条（快捷输入 + 分组栏 + 二级 tab 栏）包进一个 nav 容器：
+		// 常规模式 display:contents 形同不存在；紧凑模式它 sticky 吸顶，滚动任务时始终可切。
+		const nav = main.createDiv( { cls: 'tasks-view-nav' });
+		this.renderQuickAdd(nav);
+		this.renderGroupTabs(nav);
+		this.renderTabs(main, nav);
 		this.buildStatsShell(main);
+
+		// 初始紧凑态：ResizeObserver 首次回调是异步的，这里同步算一次避免「闪一下」
+		this.applyCompactMode();
 	}
 
 	/* ═══ Header (workbench banner) ═══════════════════════════════════════
@@ -593,19 +668,23 @@ export class TaskFlowView extends ItemView {
 
 	private renderWorkbenchHead(container: HTMLElement): void {
 		const data = this.plugin.settings.data;
-		// 封面与文字各有一个开关：两个都关时整条头部横幅不渲染（连 DOM 都不建）。
+		// 封面与文字各有一个常规开关；紧凑模式（总开关开）下也可能单独显示其中一项，
+		// 所以只要「常规开 ∥ 紧凑可能用到」就建进 DOM，可见性交给 applyCompactMode() 的 keep-* 类。
 		const showCover = data.showCover ?? true;
 		const showText = data.showHeadText ?? true;
-		if (!showCover && !showText) return;
+		const compactEligible = !!data.sidebarCompact;
+		if (!showCover && !showText && !compactEligible) return;
 
+		const coverOn = showCover || compactEligible;
+		const textOn = showText || compactEligible;
 		const head = container.createDiv( { cls: 'tf-head' });
-		// 两个都开时头部是「封面 + 文字」；只开文字则没有图片区域；只开封面则没有文字行。
-		head.toggleClass('is-cover-only', showCover && !showText);
-		head.toggleClass('is-text-only', showText && !showCover);
-		if (showCover) {
+		// 只有其中之一真正渲染时才进入「仅封面 / 仅文字」布局；两者都在则正常并排。
+		head.toggleClass('is-cover-only', coverOn && !textOn);
+		head.toggleClass('is-text-only', textOn && !coverOn);
+		if (coverOn) {
 			this.renderCover(head);
 		}
-		if (showText) {
+		if (textOn) {
 			this.renderHeadText(head);
 		}
 	}
@@ -813,7 +892,7 @@ export class TaskFlowView extends ItemView {
 		for (const g of this.getGroups()) {
 			const btn = segment.createEl('button', {
 				cls: 'tasks-view-group-btn' + (this.activeGroup === g.id ? ' is-active' : ''),
-				attr: { title: g.label }
+				attr: { title: g.label, 'aria-label': g.label }
 			});
 			setIcon(btn.createSpan('tasks-view-group-icon'), g.icon);
 			btn.createSpan({ cls: 'tasks-view-group-label', text: g.label });
@@ -839,10 +918,12 @@ export class TaskFlowView extends ItemView {
 
 		this.applyTabVisibility();
 		this.renderGroupNoteSelector();
+		this.updateTabScroller();
 
 		// 新分组的激活 tab 内容尚未渲染过，必须渲染一次，否则面板是空的
 		// （renderQueries 现在只渲染激活 tab，所以是懒渲染的关键入口）
 		void this.renderActiveTabGuarded();
+		this.scrollActiveTabIntoView();
 	}
 
 	/**
@@ -871,6 +952,95 @@ export class TaskFlowView extends ItemView {
 		this.updateEmptyGroupLabel();
 	}
 
+	/**
+	 * 紧凑模式：按容器宽度 + 设置重算 shell 根容器的 class。
+	 *
+	 * 触发条件：总开关 `sidebarCompact` 关 → 任何宽度都不压缩；开且宽度
+	 * < COMPACT_WIDTH_THRESHOLD（侧边栏 / 窄分屏 / 移动端）→ 进入紧凑。
+	 *
+	 * 模块可见性（统一由 `.keep-*` 类驱动，常规与紧凑共用同一套 CSS）：
+	 *   可见 = 常规开关为真 ∥（紧凑且对应 `compactHide*` 未勾选）
+	 * 这样无论哪种宽度，判定逻辑都一致，切换无闪烁；用户在紧凑里也能把常规关掉的
+	 * 模块单独显示出来（「独立显示」语义）。
+	 *
+	 * 宽度从根容器实时量（ResizeObserver 回调里也走这里），所以设置变更时
+	 * 由 `plugin.applyCompact()` 直接调本方法即可即时同步，无需重建 DOM。
+	 */
+	applyCompactMode(): void {
+		const el = this.shellEl;
+		if (!el) return;
+		const data = this.plugin.settings.data;
+		const width = el.clientWidth || 0;
+		const compact = !!data.sidebarCompact && width > 0 && width < COMPACT_WIDTH_THRESHOLD;
+		el.toggleClass('is-compact', compact);
+		// 紧凑模式下：每个模块的显隐完全由对应的 compact 开关独立决定，与常规开关
+		// 互不影响——即便常规里开着，紧凑里也能单独隐藏或显示它（「独立显示」语义）。
+		// 非紧凑（宽屏）：走常规开关，compact 开关不生效。
+		// 注意：DOM 在 sidebarCompact 开时已全部建好（buildShell 的 compactEligible），
+		// 所以紧凑里切开关只动 keep-* 类、无需重建。
+		el.toggleClass('keep-banner', compact ? !data.compactHideBanner : !!(data.showCover ?? true));
+		el.toggleClass('keep-title', compact ? !data.compactHideTitle : !!(data.showHeadText ?? true));
+		el.toggleClass('keep-today', compact ? !data.compactHideTodayOverview : !!data.showTodayOverview);
+		el.toggleClass('keep-important', compact ? !data.compactHideImportantReminders : !!data.showImportantReminders);
+		el.toggleClass('keep-stats', compact ? !data.compactHideStats : !!data.showStatsCategories);
+		// 切换紧凑会同时改变二级 tab 栏的可用宽度，滚动提示需重算
+		this.updateTabScroller();
+	}
+
+	/**
+	 * 挂容器宽度监听：视图放入侧边栏、从侧边栏拖回主区、窗口缩放等都会改变宽度，
+	 * 跨过阈值时即时切换紧凑模式。Obsidian 不会主动通知视图位置变化，
+	 * 所以只能靠监听容器自身宽度来推断。
+	 * 没有 ResizeObserver 的环境（如部分测试桩）退化为「按当前宽度算一次」。
+	 */
+	private setupCompactObserver(): void {
+		if (this.compactObserver) return;
+		const el = this.shellEl;
+		if (!el) return;
+		if (typeof ResizeObserver === 'undefined') {
+			this.applyCompactMode();
+			return;
+		}
+		this.compactObserver = new ResizeObserver(() => {
+			this.applyCompactMode();
+		});
+		this.compactObserver.observe(el);
+	}
+
+	/**
+	 * 二级 tab 栏可滚动判定：scrollWidth 超出可视宽度时加 `.can-scroll`，
+	 * CSS 据此在最左/最右画渐变，提示「后面还有 tab」。切分组 / 切 tab 后
+	 * 可见 tab 数量变化，scrollWidth 也会变，所以这两处都要重算。
+	 */
+	private updateTabScroller(): void {
+		const seg = this.containerEl.querySelector('.tasks-view-tab-segment');
+		if (!seg) return;
+		const overflow = seg.scrollWidth - seg.clientWidth > 1;
+		seg.toggleClass('can-scroll', overflow);
+	}
+
+	/**
+	 * 把当前激活的二级 tab 平滑滚进二级 tab 栏的可视区。
+	 * 直接算相对位移只动 tab 栏自身的横向滚动，不会把整个 Obsidian 窗口
+	 * 跟着上下滚（scrollIntoView 的 block 维度在某些主题下会把页面顶起来）。
+	 */
+	private scrollActiveTabIntoView(): void {
+		const btn = this.tabBtns[this.activeTab];
+		if (!btn) return;
+		const seg = btn.closest('.tasks-view-tab-segment');
+		if (!seg) return;
+		try {
+			const segRect = seg.getBoundingClientRect();
+			const btnRect = btn.getBoundingClientRect();
+			if (segRect.width <= 0) return;
+			const delta = (btnRect.left - segRect.left) - (seg.clientWidth - btn.clientWidth) / 2;
+			seg.scrollTo({ left: seg.scrollLeft + delta, behavior: 'smooth' });
+		} catch {
+			// DOM 测量 API 在某些环境（测试桩 / 老旧 WebView）缺失；
+			// 滚动只是锦上添花，失败绝不影响切 tab 本身
+		}
+	}
+
 
 	/**
 	 * 构建所有分组的全部 tab。
@@ -879,12 +1049,12 @@ export class TaskFlowView extends ItemView {
 	 * 于是一级 tab 显示、二级 tab 空白 —— 和设置面板里列出的 tab 对不上。
 	 * 现在一次性全部构建，切分组时只切可见性。
 	 */
-	private renderTabs(container: HTMLElement) {
+	private renderTabs(container: HTMLElement, navContainer?: HTMLElement) {
 		const groups = this.getGroups();
 		const sortedTabs = [...this.getTabs()].sort((a, b) => a.order - b.order);
 
-		// Tab bar
-		const tabBar = container.createDiv( { cls: 'tasks-view-tab-bar' });
+		// Tab bar（吸顶导航的一部分，放进 navContainer；滚动区域 panelWrap 留在主容器）
+		const tabBar = (navContainer ?? container).createDiv( { cls: 'tasks-view-tab-bar' });
 		const segment = tabBar.createDiv( { cls: 'tasks-view-tab-segment' });
 
 		// Tab panels (scroll area per tab)
@@ -971,8 +1141,11 @@ export class TaskFlowView extends ItemView {
 		this.activeTab = id;
 		this.activeTabByGroup[this.activeGroup] = id;
 		this.applyTabVisibility();
+		this.updateTabScroller();
 		// 懒渲染：只渲染刚切到的 tab（其余 tab 内容首次切到时才渲染，避免全量重渲染）
 		void this.renderActiveTabGuarded();
+		// 把刚切到的 tab 滚进二级 tab 栏可视区（tab 多时避免「激活项被挤出视野」）
+		this.scrollActiveTabIntoView();
 	}
 
 	// ── Refresh (re-runs on every file change) ──────────
@@ -1867,9 +2040,12 @@ export class TaskFlowView extends ItemView {
 
 		const more = card.createDiv( { cls: 'tf-important-more is-hidden' });
 		more.textContent = t('panel.more');
+		// 点「更多 / 收起」：就地翻转展开态后整段重渲染。
+		// 重要提醒查询通常很短（几条任务），重渲染开销可忽略；统一走重渲染可彻底避开
+		// 「被 limit 截断的任务不在 DOM 里、display 切换无效」的坑——无论是否带 limit 都能正确展开/收起。
 		more.addEventListener('click', () => {
 			this.importantExpanded = !this.importantExpanded;
-			this.applyImportantTruncation(body);
+			void this.renderImportantReminders({ keepExpanded: true });
 		});
 		this.importantMoreEl = more;
 
@@ -1880,12 +2056,15 @@ export class TaskFlowView extends ItemView {
 	 * 渲染「重要提醒」的 Tasks 查询结果。
 	 * 查询原样交给 Tasks（一个字都不改）。module 关闭或 body 未构建时直接返回。
 	 */
-	private async renderImportantReminders(): Promise<void> {
+	private async renderImportantReminders(opts?: { keepExpanded?: boolean }): Promise<void> {
 		const body = this.importantBodyEl;
 		if (!body) return;
-		// 每次重渲染复位成折叠态（最多 3 条）；展开是用户的临时操作，不应跨刷新保留
-		this.importantExpanded = false;
-		const query = (this.plugin.settings.data.importantReminderQuery || '').trim() || DEFAULT_IMPORTANT_QUERY;
+		// 每次完整刷新复位成折叠态（最多 3 条）；展开是用户的临时操作，不应跨刷新保留。
+		// 但「点更多就地展开」触发的重渲染要保留展开态，故用 keepExpanded 跳过这次复位。
+		if (!opts?.keepExpanded) this.importantExpanded = false;
+		const rawQuery = (this.plugin.settings.data.importantReminderQuery || '').trim() || DEFAULT_IMPORTANT_QUERY;
+		// 展开态：去掉查询里的 limit，让被截断的任务也能渲染出来；折叠态用原查询（带 limit）
+		const query = this.importantExpanded ? this.stripLimit(rawQuery) : rawQuery;
 		try {
 			body.empty();
 			// 与 tab 同理：重要提醒也用专属渲染组件，重渲染前先卸载旧的
@@ -1935,18 +2114,50 @@ export class TaskFlowView extends ItemView {
 	}
 
 	/**
-	 * 截断：最多显示 3 条；超出的（含嵌套）隐藏，并显示「更多任务」；
-	 * 展开态则全部显示。少于等于 3 条时「更多任务」隐藏。
+	 * 截断 / 展开控制：
+	 * - 查询未带 limit（或 limit 未截断）且任务 > 3 条：就地用 display 折叠，显示「更多 (N)…」，点击就地展开。
+	 * - 查询带 limit 且 Tasks 真的把结果截断了（底部出现 "X of Y tasks" 且 Y > X）：DOM 里只有 X 条，
+	 *   第 X+1…Y 条根本不在 DOM，无法用 display 折叠。此时显示「更多 (Y−X)…」，点击会**去掉 limit 重新渲染**
+	 *   以展示全部（见 renderImportantModule 的点击处理）；「收起」再带回 limit。
 	 * 用 display:none 而非 max-height+滚动 —— 严格满足「不要滚动条」与「按实际高度」。
 	 */
 	private applyImportantTruncation(body: HTMLElement): void {
 		const more = this.importantMoreEl;
 		const items = Array.from(body.querySelectorAll<HTMLElement>('.task-list-item'));
+
+		// 解析 Tasks 计数脚注（limit 截断时形如 "3 of 4 tasks"）
+		const count = this.parseTasksCount(body);
+		const limitCapped = !!count && count.total > count.shown;
+
 		if (items.length === 0) {
 			if (more) more.addClass('is-hidden');
 			return;
 		}
+
 		const MAX = 3;
+
+		// 展开态：全部任务已在 DOM 里（展开时去掉了 limit 重渲染），直接全显示，「收起」复位
+		if (this.importantExpanded) {
+			items.forEach((it) => it.setCssProps({ display: '' }));
+			if (more) {
+				more.removeClass('is-hidden');
+				more.textContent = t('panel.collapse');
+			}
+			return;
+		}
+
+		// 折叠态
+		if (limitCapped) {
+			// 被 limit 截断：DOM 里只有 shown 条，全部显示，仅提示还有多少条被 limit 挡住
+			items.forEach((it) => it.setCssProps({ display: '' }));
+			if (more) {
+				more.removeClass('is-hidden');
+				more.textContent = t('panel.moreCount', { n: count!.total - count!.shown });
+			}
+			return;
+		}
+
+		// 普通（无 limit 或 limit 未截断）分支：按 DOM 条数就地折叠
 		if (items.length <= MAX) {
 			items.forEach((it) => it.setCssProps({ display: '' }));
 			if (more) {
@@ -1955,19 +2166,36 @@ export class TaskFlowView extends ItemView {
 			}
 			return;
 		}
-		if (this.importantExpanded) {
-			items.forEach((it) => it.setCssProps({ display: '' }));
-			if (more) {
-				more.removeClass('is-hidden');
-				more.textContent = t('panel.collapse');
-			}
-		} else {
-			items.forEach((it, i) => it.setCssProps({ display: i < MAX ? '' : 'none' }));
-			if (more) {
-				more.removeClass('is-hidden');
-				more.textContent = t('panel.moreCount', { n: items.length - MAX });
-			}
+		items.forEach((it, i) => it.setCssProps({ display: i < MAX ? '' : 'none' }));
+		if (more) {
+			more.removeClass('is-hidden');
+			more.textContent = t('panel.moreCount', { n: items.length - MAX });
 		}
+	}
+
+	/** 解析 Tasks 查询底部的计数行。limit 截断时文本形如 "3 of 4 tasks"（"已显示 / 共匹配"）。 */
+	private parseTasksCount(body: HTMLElement): { shown: number; total: number } | null {
+		const parse = (text: string): { shown: number; total: number } | null => {
+			const m = text.match(/(\d+)\s+of\s+(\d+)\s+tasks/i);
+			if (!m) return null;
+			const shown = Number(m[1]);
+			const total = Number(m[2]);
+			if (!Number.isFinite(shown) || !Number.isFinite(total)) return null;
+			return { shown, total };
+		};
+		const el = body.querySelector('.tasks-count');
+		const fromEl = parse((el?.textContent ?? '').trim());
+		if (fromEl) return fromEl;
+		// 兜底：不同 Tasks 版本可能换了 class，直接在整段文本里找
+		return parse(body.textContent ?? '');
+	}
+
+	/** 去掉查询里独立的 `limit N` 行（用于「更多」展开时展示被截断的全部任务）。 */
+	private stripLimit(query: string): string {
+		return query
+			.split('\n')
+			.filter((line) => !/^\s*limit\s+\d+\s*$/i.test(line))
+			.join('\n');
 	}
 
 	/** 重要提醒为空时的占位（Tasks 查询确实没结果，或渲染中途静默） */

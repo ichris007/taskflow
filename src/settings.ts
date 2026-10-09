@@ -4,6 +4,11 @@ import type { Board, OpenLocation, TabConfig, TabGroup, TabGroupConfig, TaskView
 import {
 	clampCoverPosition,
 	COVER_DIR,
+	DEFAULT_COMPACT_HIDE_BANNER,
+	DEFAULT_COMPACT_HIDE_TITLE,
+	DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW,
+	DEFAULT_COMPACT_HIDE_IMPORTANT_REMINDERS,
+	DEFAULT_COMPACT_HIDE_STATS,
 	DEFAULT_COVER_POSITION,
 	DEFAULT_IMPORTANT_QUERY,
 	DEFAULT_LANGUAGE,
@@ -12,6 +17,8 @@ import {
 	DEFAULT_SHOW_IMPORTANT_REMINDERS,
 	DEFAULT_SHOW_STATS_CATEGORIES,
 	DEFAULT_SHOW_TODAY_OVERVIEW,
+	DEFAULT_SIDEBAR_COMPACT,
+	DEFAULT_PINNED_NOTE_PATHS,
 	defaultSlogan,
 	DEFAULT_WORKBENCH_TITLE,
 	getTabGroup,
@@ -485,6 +492,13 @@ export const DEFAULT_SETTINGS: TaskViewsSettings = {
 		showHeadText: DEFAULT_SHOW_HEAD_TEXT,
 		showFrontendLimit: false,
 		openLocation: DEFAULT_OPEN_LOCATION,
+		sidebarCompact: DEFAULT_SIDEBAR_COMPACT,
+		compactHideBanner: DEFAULT_COMPACT_HIDE_BANNER,
+		compactHideTitle: DEFAULT_COMPACT_HIDE_TITLE,
+		compactHideTodayOverview: DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW,
+		compactHideImportantReminders: DEFAULT_COMPACT_HIDE_IMPORTANT_REMINDERS,
+		compactHideStats: DEFAULT_COMPACT_HIDE_STATS,
+		pinnedNotePaths: DEFAULT_PINNED_NOTE_PATHS,
 	},
 	language: DEFAULT_LANGUAGE,
 };
@@ -584,9 +598,17 @@ export function migrateSettings(loaded: Partial<TaskViewsSettings>): TaskViewsSe
 				showStatsCategories: data.showStatsCategories ?? DEFAULT_SHOW_STATS_CATEGORIES,
 				// 头部文字与打开位置：老配置补默认（显示 / 主窗口）
 				showHeadText: data.showHeadText ?? DEFAULT_SHOW_HEAD_TEXT,
-				showFrontendLimit: data.showFrontendLimit ?? false,
-				openLocation: data.openLocation === 'sidebar' ? 'sidebar' : 'main',
-			},
+			showFrontendLimit: data.showFrontendLimit ?? false,
+			openLocation: data.openLocation === 'sidebar' ? 'sidebar' : 'main',
+			// 紧凑模式：老配置没有这些字段，一律补默认（开总开关、三模块默认隐藏）
+			sidebarCompact: data.sidebarCompact ?? DEFAULT_SIDEBAR_COMPACT,
+			compactHideBanner: data.compactHideBanner ?? DEFAULT_COMPACT_HIDE_BANNER,
+			compactHideTitle: data.compactHideTitle ?? DEFAULT_COMPACT_HIDE_TITLE,
+			compactHideTodayOverview: data.compactHideTodayOverview ?? DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW,
+			compactHideImportantReminders: data.compactHideImportantReminders ?? DEFAULT_COMPACT_HIDE_IMPORTANT_REMINDERS,
+			compactHideStats: data.compactHideStats ?? DEFAULT_COMPACT_HIDE_STATS,
+			pinnedNotePaths: data.pinnedNotePaths ?? DEFAULT_PINNED_NOTE_PATHS,
+		},
 		};
 	}
 
@@ -631,6 +653,13 @@ export function migrateSettings(loaded: Partial<TaskViewsSettings>): TaskViewsSe
 			showHeadText: DEFAULT_SHOW_HEAD_TEXT,
 			showFrontendLimit: false,
 			openLocation: DEFAULT_OPEN_LOCATION,
+			sidebarCompact: DEFAULT_SIDEBAR_COMPACT,
+			compactHideBanner: DEFAULT_COMPACT_HIDE_BANNER,
+			compactHideTitle: DEFAULT_COMPACT_HIDE_TITLE,
+			compactHideTodayOverview: DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW,
+			compactHideImportantReminders: DEFAULT_COMPACT_HIDE_IMPORTANT_REMINDERS,
+			compactHideStats: DEFAULT_COMPACT_HIDE_STATS,
+			pinnedNotePaths: DEFAULT_PINNED_NOTE_PATHS,
 		},
 		language: 'auto',
 	};
@@ -1000,17 +1029,124 @@ export class SettingsManager {
 			});
 		}
 
-		/* ── 卡片 7：提醒 ── */
-		{
-			const card = body.createDiv( { cls: 'tf-settings-card' });
-			card.createDiv( { cls: 'tf-settings-card-caption', text: t('settings.noticeTitle') });
-			const note = card.createDiv( { cls: 'tf-settings-note' });
-			setIcon(note.createSpan( { cls: 'tf-settings-note-icon' }), 'info');
-			note.createSpan( {
-				cls: 'tf-settings-note-text',
-				text: t('settings.notice'),
-			});
-		}
+	/* ── 卡片 6.5：紧凑模式（侧边栏 / 窄屏 / 移动端）──
+	   总开关 + 五个模块独立开关（封面 / 标题 / 今日概览 / 重要提醒 / 底部统计）：
+	   窄视图下自动收起大模块，用户也可单独把某个模块留在紧凑界面里。
+	   开关为「独立显示」语义——即便常规模式关了某模块，紧凑里也能单独打开它。
+	   改完即时同步已打开的视图，无需重载插件。 */
+	{
+		const card = body.createDiv( { cls: 'tf-settings-card' });
+		card.createDiv( { cls: 'tf-settings-card-caption', text: t('settings.compact.title') });
+		const rows = card.createDiv( { cls: 'tf-settings-rows' });
+
+		renderTFRow(rows, {
+			title: t('settings.compact.enable'),
+			description: t('settings.compact.enableDesc'),
+			fill: (control) => {
+				renderTFSwitch(control, {
+					checked: data.sidebarCompact,
+					label: t('settings.compact.enable'),
+					onChange: (value) => {
+						data.sidebarCompact = value;
+						void this.saveSettings();
+						this.plugin.applyCompact();
+					},
+				});
+			},
+		});
+
+		renderTFRow(rows, {
+			title: t('settings.compact.hideBanner'),
+			description: t('settings.compact.hideBannerDesc'),
+			fill: (control) => {
+				renderTFSwitch(control, {
+					checked: data.compactHideBanner,
+					label: t('settings.compact.hideBanner'),
+					onChange: (value) => {
+						data.compactHideBanner = value;
+						void this.saveSettings();
+						this.plugin.applyCompact();
+					},
+				});
+			},
+		});
+
+		renderTFRow(rows, {
+			title: t('settings.compact.hideTitle'),
+			description: t('settings.compact.hideTitleDesc'),
+			fill: (control) => {
+				renderTFSwitch(control, {
+					checked: data.compactHideTitle,
+					label: t('settings.compact.hideTitle'),
+					onChange: (value) => {
+						data.compactHideTitle = value;
+						void this.saveSettings();
+						this.plugin.applyCompact();
+					},
+				});
+			},
+		});
+
+		renderTFRow(rows, {
+			title: t('settings.compact.hideTodayOverview'),
+			description: t('settings.compact.hideTodayOverviewDesc'),
+			fill: (control) => {
+				renderTFSwitch(control, {
+					checked: data.compactHideTodayOverview,
+					label: t('settings.compact.hideTodayOverview'),
+					onChange: (value) => {
+						data.compactHideTodayOverview = value;
+						void this.saveSettings();
+						this.plugin.applyCompact();
+					},
+				});
+			},
+		});
+
+		renderTFRow(rows, {
+			title: t('settings.compact.hideImportantReminders'),
+			description: t('settings.compact.hideImportantRemindersDesc'),
+			fill: (control) => {
+				renderTFSwitch(control, {
+					checked: data.compactHideImportantReminders,
+					label: t('settings.compact.hideImportantReminders'),
+					onChange: (value) => {
+						data.compactHideImportantReminders = value;
+						void this.saveSettings();
+						this.plugin.applyCompact();
+					},
+				});
+			},
+		});
+
+		renderTFRow(rows, {
+			title: t('settings.compact.hideStats'),
+			description: t('settings.compact.hideStatsDesc'),
+			fill: (control) => {
+				renderTFSwitch(control, {
+					checked: data.compactHideStats,
+					label: t('settings.compact.hideStats'),
+					onChange: (value) => {
+						data.compactHideStats = value;
+						void this.saveSettings();
+						this.plugin.applyCompact();
+					},
+				});
+			},
+		});
+	}
+
+	/* ── 卡片 7：提醒 ── */
+	{
+		const card = body.createDiv( { cls: 'tf-settings-card' });
+		card.createDiv( { cls: 'tf-settings-card-caption', text: t('settings.noticeTitle') });
+		const note = card.createDiv( { cls: 'tf-settings-note' });
+		setIcon(note.createSpan( { cls: 'tf-settings-note-icon' }), 'info');
+		note.createSpan( {
+			cls: 'tf-settings-note-text',
+			text: t('settings.notice'),
+		});
+	}
 	}
 
 	/** 「主窗口 / 右侧边栏」二选一：分段控件，选中项有底色 + 图标 */
