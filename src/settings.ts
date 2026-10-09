@@ -17,7 +17,9 @@ import {
 	DEFAULT_SHOW_IMPORTANT_REMINDERS,
 	DEFAULT_SHOW_STATS_CATEGORIES,
 	DEFAULT_SHOW_TODAY_OVERVIEW,
-	DEFAULT_SIDEBAR_COMPACT,
+	DEFAULT_COMPACT_NARROW,
+	DEFAULT_COMPACT_SIDEBAR,
+	DEFAULT_COMPACT_MOBILE,
 	DEFAULT_PINNED_NOTE_PATHS,
 	defaultSlogan,
 	DEFAULT_WORKBENCH_TITLE,
@@ -492,7 +494,9 @@ export const DEFAULT_SETTINGS: TaskViewsSettings = {
 		showHeadText: DEFAULT_SHOW_HEAD_TEXT,
 		showFrontendLimit: false,
 		openLocation: DEFAULT_OPEN_LOCATION,
-		sidebarCompact: DEFAULT_SIDEBAR_COMPACT,
+		compactNarrow: DEFAULT_COMPACT_NARROW,
+		compactSidebar: DEFAULT_COMPACT_SIDEBAR,
+		compactMobile: DEFAULT_COMPACT_MOBILE,
 		compactHideBanner: DEFAULT_COMPACT_HIDE_BANNER,
 		compactHideTitle: DEFAULT_COMPACT_HIDE_TITLE,
 		compactHideTodayOverview: DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW,
@@ -552,6 +556,20 @@ export function migrateTabs(tabs: TabConfig[]): TabConfig[] {
 }
 
 /**
+ * 老配置只有总开关 `sidebarCompact`；拆成三个场景开关后做一次等价值迁移：
+ * 若存盘里有旧总开关、且没有新的三个场景开关，则把三者都设成旧开关的值。
+ */
+function normalizeCompactTrigger(data: Record<string, unknown>): void {
+	if (data.sidebarCompact !== undefined && data.compactNarrow === undefined) {
+		const v = !!data.sidebarCompact;
+		data.compactNarrow = v;
+		data.compactSidebar = v;
+		data.compactMobile = v;
+		delete data.sidebarCompact;
+	}
+}
+
+/**
  * Migrate settings from old format (flat) to new format (versioned with data wrapper)
  */
 export function migrateSettings(loaded: Partial<TaskViewsSettings>): TaskViewsSettings {
@@ -576,6 +594,8 @@ export function migrateSettings(loaded: Partial<TaskViewsSettings>): TaskViewsSe
 		if (data.globalTabs) {
 			data.globalTabs.sort((a, b) => a.order - b.order);
 		}
+		// 老配置可能只带旧总开关 sidebarCompact：等价值拆成三个场景开关
+		normalizeCompactTrigger(data as unknown as Record<string, unknown>);
 		return {
 			version: loaded.version ?? '',
 			data: {
@@ -599,10 +619,13 @@ export function migrateSettings(loaded: Partial<TaskViewsSettings>): TaskViewsSe
 				// 头部文字与打开位置：老配置补默认（显示 / 主窗口）
 				showHeadText: data.showHeadText ?? DEFAULT_SHOW_HEAD_TEXT,
 			showFrontendLimit: data.showFrontendLimit ?? false,
-			openLocation: data.openLocation === 'sidebar' ? 'sidebar' : 'main',
-			// 紧凑模式：老配置没有这些字段，一律补默认（开总开关、三模块默认隐藏）
-			sidebarCompact: data.sidebarCompact ?? DEFAULT_SIDEBAR_COMPACT,
-			compactHideBanner: data.compactHideBanner ?? DEFAULT_COMPACT_HIDE_BANNER,
+		openLocation: data.openLocation === 'sidebar' ? 'sidebar' : 'main',
+		// 紧凑模式：老配置没有这些字段，一律补默认（三场景默认开、模块默认隐藏）
+		compactNarrow: data.compactNarrow ?? DEFAULT_COMPACT_NARROW,
+		compactSidebar: data.compactSidebar ?? DEFAULT_COMPACT_SIDEBAR,
+		compactMobile: data.compactMobile ?? DEFAULT_COMPACT_MOBILE,
+		// 老配置只有总开关 sidebarCompact：等价值迁移成三个场景开关（见下方 normalizeCompactTrigger）
+		compactHideBanner: data.compactHideBanner ?? DEFAULT_COMPACT_HIDE_BANNER,
 			compactHideTitle: data.compactHideTitle ?? DEFAULT_COMPACT_HIDE_TITLE,
 			compactHideTodayOverview: data.compactHideTodayOverview ?? DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW,
 			compactHideImportantReminders: data.compactHideImportantReminders ?? DEFAULT_COMPACT_HIDE_IMPORTANT_REMINDERS,
@@ -636,31 +659,39 @@ export function migrateSettings(loaded: Partial<TaskViewsSettings>): TaskViewsSe
 		}
 	}
 
+	const legacyData: Record<string, unknown> = {
+		inboxFilePath: inboxFilePath ?? DEFAULT_SETTINGS.data.inboxFilePath,
+		excludedFolders: excludedFolders ?? DEFAULT_SETTINGS.data.excludedFolders,
+		globalTabs: globalTabs ?? DEFAULT_SETTINGS.data.globalTabs,
+		boards: boards.sort((a, b) => a.order - b.order),
+			groups: TAB_GROUPS,
+		...HEAD_DEFAULTS,
+		// 面板模块：老格式（扁平）一定没有，用默认常量补齐
+		showTodayOverview: DEFAULT_SHOW_TODAY_OVERVIEW,
+		showImportantReminders: DEFAULT_SHOW_IMPORTANT_REMINDERS,
+		importantReminderQuery: DEFAULT_IMPORTANT_QUERY,
+		showStatsCategories: DEFAULT_SHOW_STATS_CATEGORIES,
+		showHeadText: DEFAULT_SHOW_HEAD_TEXT,
+		showFrontendLimit: false,
+		openLocation: DEFAULT_OPEN_LOCATION,
+		compactNarrow: DEFAULT_COMPACT_NARROW,
+		compactSidebar: DEFAULT_COMPACT_SIDEBAR,
+		compactMobile: DEFAULT_COMPACT_MOBILE,
+		// 顶号 legacy：老扁平格式可能带着旧总开关 sidebarCompact
+		sidebarCompact: anyLoaded.sidebarCompact,
+		compactHideBanner: DEFAULT_COMPACT_HIDE_BANNER,
+		compactHideTitle: DEFAULT_COMPACT_HIDE_TITLE,
+		compactHideTodayOverview: DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW,
+		compactHideImportantReminders: DEFAULT_COMPACT_HIDE_IMPORTANT_REMINDERS,
+		compactHideStats: DEFAULT_COMPACT_HIDE_STATS,
+		pinnedNotePaths: DEFAULT_PINNED_NOTE_PATHS,
+	};
+	// 若老配置带了旧总开关，等价值拆成三个场景开关
+	normalizeCompactTrigger(legacyData);
+
 	return {
 		version: '',
-		data: {
-			inboxFilePath: inboxFilePath ?? DEFAULT_SETTINGS.data.inboxFilePath,
-			excludedFolders: excludedFolders ?? DEFAULT_SETTINGS.data.excludedFolders,
-			globalTabs: globalTabs ?? DEFAULT_SETTINGS.data.globalTabs,
-			boards: boards.sort((a, b) => a.order - b.order),
-				groups: TAB_GROUPS,
-			...HEAD_DEFAULTS,
-			// 面板模块：老格式（扁平）一定没有，用默认常量补齐
-			showTodayOverview: DEFAULT_SHOW_TODAY_OVERVIEW,
-			showImportantReminders: DEFAULT_SHOW_IMPORTANT_REMINDERS,
-			importantReminderQuery: DEFAULT_IMPORTANT_QUERY,
-			showStatsCategories: DEFAULT_SHOW_STATS_CATEGORIES,
-			showHeadText: DEFAULT_SHOW_HEAD_TEXT,
-			showFrontendLimit: false,
-			openLocation: DEFAULT_OPEN_LOCATION,
-			sidebarCompact: DEFAULT_SIDEBAR_COMPACT,
-			compactHideBanner: DEFAULT_COMPACT_HIDE_BANNER,
-			compactHideTitle: DEFAULT_COMPACT_HIDE_TITLE,
-			compactHideTodayOverview: DEFAULT_COMPACT_HIDE_TODAY_OVERVIEW,
-			compactHideImportantReminders: DEFAULT_COMPACT_HIDE_IMPORTANT_REMINDERS,
-			compactHideStats: DEFAULT_COMPACT_HIDE_STATS,
-			pinnedNotePaths: DEFAULT_PINNED_NOTE_PATHS,
-		},
+		data: legacyData as unknown as TaskViewsSettings['data'],
 		language: 'auto',
 	};
 }
@@ -1029,31 +1060,18 @@ export class SettingsManager {
 			});
 		}
 
-	/* ── 卡片 6.5：紧凑模式（侧边栏 / 窄屏 / 移动端）──
-	   总开关 + 五个模块独立开关（封面 / 标题 / 今日概览 / 重要提醒 / 底部统计）：
-	   窄视图下自动收起大模块，用户也可单独把某个模块留在紧凑界面里。
-	   开关为「独立显示」语义——即便常规模式关了某模块，紧凑里也能单独打开它。
+	/* ── 卡片 6.5：紧凑模式 ──
+	   触发是自动的：窄窗口（<360px）/ 侧边栏 / 移动端任一命中即进入紧凑，
+	   三个场景字段（compactNarrow/Sidebar/Mobile）默认全开且不在面板露出，
+	   避免让用户做不必要的决定；需要时仍可手改 data.json。
+	   面板只留五个模块独立开关（封面 / 标题 / 今日概览 / 重要提醒 / 底部统计）：
+	   用户可单独把某个模块留在紧凑界面里。开关为「独立显示」语义——
+	   即便常规模式关了某模块，紧凑里也能单独打开它。
 	   改完即时同步已打开的视图，无需重载插件。 */
 	{
 		const card = body.createDiv( { cls: 'tf-settings-card' });
 		card.createDiv( { cls: 'tf-settings-card-caption', text: t('settings.compact.title') });
 		const rows = card.createDiv( { cls: 'tf-settings-rows' });
-
-		renderTFRow(rows, {
-			title: t('settings.compact.enable'),
-			description: t('settings.compact.enableDesc'),
-			fill: (control) => {
-				renderTFSwitch(control, {
-					checked: data.sidebarCompact,
-					label: t('settings.compact.enable'),
-					onChange: (value) => {
-						data.sidebarCompact = value;
-						void this.saveSettings();
-						this.plugin.applyCompact();
-					},
-				});
-			},
-		});
 
 		renderTFRow(rows, {
 			title: t('settings.compact.hideBanner'),

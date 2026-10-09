@@ -1,6 +1,6 @@
 {
 	"name": "taskflow",
-	"version": "1.1.0",
+	"version": "1.2.1",
 	"description": "An action workbench for Tasks in Obsidian — reduce decision cost and start faster.",
 	"main": "main.js",
 	"type": "module",

@@ -1,4 +1,4 @@
-import { App, Component, ItemView, MarkdownRenderer, Notice, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
+import { App, Component, ItemView, MarkdownRenderer, Notice, Platform, TFile, WorkspaceLeaf, setIcon } from 'obsidian';
 import type TaskViewsPlugin from './main';
 import type { TabConfig, TabGroup, TabGroupConfig, Task } from './types';
 import {
@@ -637,7 +637,7 @@ export class TaskFlowView extends ItemView {
 		// 常规关掉某块仍可保留 DOM（compactEligible 时），让紧凑模式能单独把它显示出来；
 		// 可见性由 applyCompactMode() 的 keep-today / keep-important 类控制。
 		const data = this.plugin.settings.data;
-		const compactEligible = !!data.sidebarCompact;
+		const compactEligible = !!(data.compactNarrow || data.compactSidebar || data.compactMobile);
 		if (data.showTodayOverview || data.showImportantReminders || compactEligible) {
 			const panels = main.createDiv( { cls: 'tf-panels' });
 			if (data.showTodayOverview || compactEligible) this.renderTodayOverview(panels);
@@ -650,7 +650,9 @@ export class TaskFlowView extends ItemView {
 		this.renderQuickAdd(nav);
 		this.renderGroupTabs(nav);
 		this.renderTabs(main, nav);
-		this.buildStatsShell(main);
+		// 统计栏挂在根容器（main 之外）：无论常规还是紧凑模式，它都固定在视口底部，
+		// 不被任务列表的滚动容器卷走（紧凑模式滚动容器是 .tasks-view-main）。
+		this.buildStatsShell(container);
 
 		// 初始紧凑态：ResizeObserver 首次回调是异步的，这里同步算一次避免「闪一下」
 		this.applyCompactMode();
@@ -672,7 +674,7 @@ export class TaskFlowView extends ItemView {
 		// 所以只要「常规开 ∥ 紧凑可能用到」就建进 DOM，可见性交给 applyCompactMode() 的 keep-* 类。
 		const showCover = data.showCover ?? true;
 		const showText = data.showHeadText ?? true;
-		const compactEligible = !!data.sidebarCompact;
+		const compactEligible = !!(data.compactNarrow || data.compactSidebar || data.compactMobile);
 		if (!showCover && !showText && !compactEligible) return;
 
 		const coverOn = showCover || compactEligible;
@@ -953,14 +955,17 @@ export class TaskFlowView extends ItemView {
 	}
 
 	/**
-	 * 紧凑模式：按容器宽度 + 设置重算 shell 根容器的 class。
+	 * 紧凑模式：按「三个场景开关 + 当前环境」重算 shell 根容器的 class。
 	 *
-	 * 触发条件：总开关 `sidebarCompact` 关 → 任何宽度都不压缩；开且宽度
-	 * < COMPACT_WIDTH_THRESHOLD（侧边栏 / 窄分屏 / 移动端）→ 进入紧凑。
+	 * 触发条件（三者取或，互不影响）：
+	 *   1. 窄窗口：容器宽度 < COMPACT_WIDTH_THRESHOLD；
+	 *   2. 侧边栏：视图位于左/右侧边栏（祖先含 `.mod-left-split` / `.mod-right-split`）；
+	 *   3. 移动端：Obsidian 移动版（Platform.isMobile）。
+	 * 每个场景由设置里独立的开关控制是否启用，全部关则任何环境都不紧凑。
 	 *
 	 * 模块可见性（统一由 `.keep-*` 类驱动，常规与紧凑共用同一套 CSS）：
 	 *   可见 = 常规开关为真 ∥（紧凑且对应 `compactHide*` 未勾选）
-	 * 这样无论哪种宽度，判定逻辑都一致，切换无闪烁；用户在紧凑里也能把常规关掉的
+	 * 这样无论哪种场景，判定逻辑都一致，切换无闪烁；用户在紧凑里也能把常规关掉的
 	 * 模块单独显示出来（「独立显示」语义）。
 	 *
 	 * 宽度从根容器实时量（ResizeObserver 回调里也走这里），所以设置变更时
@@ -971,18 +976,22 @@ export class TaskFlowView extends ItemView {
 		if (!el) return;
 		const data = this.plugin.settings.data;
 		const width = el.clientWidth || 0;
-		const compact = !!data.sidebarCompact && width > 0 && width < COMPACT_WIDTH_THRESHOLD;
+		const compactByWidth = data.compactNarrow && width > 0 && width < COMPACT_WIDTH_THRESHOLD;
+		const compactBySidebar = data.compactSidebar && !!el.closest('.mod-left-split, .mod-right-split');
+		const compactByMobile = data.compactMobile && Platform.isMobile;
+		const compact = compactByWidth || compactBySidebar || compactByMobile;
 		el.toggleClass('is-compact', compact);
 		// 紧凑模式下：每个模块的显隐完全由对应的 compact 开关独立决定，与常规开关
 		// 互不影响——即便常规里开着，紧凑里也能单独隐藏或显示它（「独立显示」语义）。
 		// 非紧凑（宽屏）：走常规开关，compact 开关不生效。
-		// 注意：DOM 在 sidebarCompact 开时已全部建好（buildShell 的 compactEligible），
+		// 注意：DOM 在任意紧凑场景开时已全部建好（buildShell 的 compactEligible），
 		// 所以紧凑里切开关只动 keep-* 类、无需重建。
+		// 底部统计栏：宽屏下恒显示（即使胶囊折叠也保留进度条+百分比）；紧凑下才受 compactHideStats 控制。
 		el.toggleClass('keep-banner', compact ? !data.compactHideBanner : !!(data.showCover ?? true));
 		el.toggleClass('keep-title', compact ? !data.compactHideTitle : !!(data.showHeadText ?? true));
 		el.toggleClass('keep-today', compact ? !data.compactHideTodayOverview : !!data.showTodayOverview);
 		el.toggleClass('keep-important', compact ? !data.compactHideImportantReminders : !!data.showImportantReminders);
-		el.toggleClass('keep-stats', compact ? !data.compactHideStats : !!data.showStatsCategories);
+		el.toggleClass('keep-stats', compact ? !data.compactHideStats : true);
 		// 切换紧凑会同时改变二级 tab 栏的可用宽度，滚动提示需重算
 		this.updateTabScroller();
 	}

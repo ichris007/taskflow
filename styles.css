@@ -1281,7 +1281,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--tf-s-2);
-  padding: var(--tf-s-3) var(--tf-gutter) var(--tf-s-2);
+  padding: var(--tf-s-3) var(--tf-gutter) 0; /* 底边贴窗，不留间距；左右/上仍走 gutter */
   /* 与画布同底 + 一条顶部发丝线：只是画布的下边界，不是独立色带 */
   background: var(--tf-stat-surface);
   border-top: 1px solid var(--tf-hairline);
@@ -1330,9 +1330,9 @@
 
 .tasks-view-stats-pct {
   font-family: var(--tf-font-display);
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
   line-height: 1;
   color: var(--tf-ink);
   /* 把百分比与箭头一起推到右侧，label 留在左边 */
@@ -2998,6 +2998,13 @@
 
 /* 2) 紧凑布局：整页单滚动 + 导航吸顶（快捷输入 / 分组栏 / 二级 tab 栏 一起吸顶） */
 .tasks-view-container.is-compact .tf-panels { flex-direction: column; }
+/* 面板纵堆时主轴变垂直：.tf-today/.tf-important 的 flex-basis:300px 会从
+   「宽 300px」变成「高 300px」，把卡片强行垫高、下方大片留白。改回内容高。 */
+.tasks-view-container.is-compact .tf-today,
+.tasks-view-container.is-compact .tf-important {
+  flex: 0 0 auto;
+  min-width: 0;
+}
 
 .tasks-view-container.is-compact .tasks-view-main {
   overflow-y: auto;

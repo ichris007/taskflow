@@ -149,12 +149,17 @@ export interface TaskViewsData {
 	showFrontendLimit: boolean;
 	/** 插件默认打开位置：主窗口（main）或右侧边栏（sidebar） */
 	openLocation: 'main' | 'sidebar';
-	/* ── 紧凑模式（侧边栏 / 窄屏 / 移动端）────────────────────────
-	   视图容器宽度小于阈值时自动收起占用垂直/水平空间大的模块，
-	   让任务列表在侧边栏里也能看清。总开关 + 各模块独立开关：
-	   总开关关则任何宽度都保持完整界面；总开关开且宽度够宽也不压缩。 */
-	/** 紧凑模式总开关：窄视图下自动收起大模块；false = 始终完整界面 */
-	sidebarCompact: boolean;
+	/* ── 紧凑模式（窄窗口 / 侧边栏 / 移动端）────────────────────
+	   三种场景下各自独立决定是否启用紧凑模式，互不影响：
+	   窄窗口按容器宽度阈值判定；侧边栏按视图所在位置判定；
+	   移动端按 Obsidian 是否为移动版判定。启用后由各自的
+	   compactHide* 模块开关决定具体收起哪些大模块。 */
+	/** 窄窗口（容器宽度 < 阈值）下启用紧凑模式 */
+	compactNarrow: boolean;
+	/** 视图位于侧边栏（左/右）时启用紧凑模式 */
+	compactSidebar: boolean;
+	/** Obsidian 移动版（手机/平板 App）下启用紧凑模式 */
+	compactMobile: boolean;
 	/** 紧凑模式下是否隐藏封面横幅（只控封面图，不影响下方的标题行） */
 	compactHideBanner: boolean;
 	/** 紧凑模式下是否隐藏标题行（工作台名 + slogan + 右侧日期时间） */
@@ -263,8 +268,10 @@ export const DEFAULT_SHOW_HEAD_TEXT = true;
 /** 插件默认打开位置：主窗口 */
 export const DEFAULT_OPEN_LOCATION: OpenLocation = 'main';
 
-/** 紧凑模式：窄视图下自动收起大模块。总开关默认开（侧边栏/移动端体验更好）。 */
-export const DEFAULT_SIDEBAR_COMPACT = true;
+/** 紧凑模式按场景独立启用：窄窗口 / 侧边栏 / 移动端，均默认开。 */
+export const DEFAULT_COMPACT_NARROW = true;
+export const DEFAULT_COMPACT_SIDEBAR = true;
+export const DEFAULT_COMPACT_MOBILE = true;
 
 /** 紧凑模式下默认隐藏的模块（用户可在设置里单独打开）。 */
 export const DEFAULT_COMPACT_HIDE_BANNER = true;
