@@ -310,3 +310,18 @@ TaskFlow 最终想带来的改变，可以浓缩成一句话：
 ---
 
 > **TaskFlow — 从任务管理，到行动。**
+
+---
+<div align="center">
+
+### ☕ 支持作者
+
+如果这个项目给你带来了帮助，欢迎请我喝杯咖啡 ☕
+
+微信扫码↓
+
+<img src="https://github.com/ichris007/ichris007/blob/main/images/wechat_donate_qrcode0.png" width="300" alt="微信赞赏码">
+
+感谢每一份支持！
+
+</div>
